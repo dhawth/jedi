@@ -31,7 +31,9 @@ translator or a UNIX-to-TCP port forwarder.  A UNIX-to-TCP port forwarder is pro
 in python.
 
 Everything herein is developed based on open-source software, and the end user 
-is responsible for complying with any restrictions on the use thereof.
+is responsible for complying with any restrictions on the use thereof.  If you
+are interested in having a custom backend written for you or a modification 
+done, I may be available for contract work.
 
 Building and Installation
 -------------------------
