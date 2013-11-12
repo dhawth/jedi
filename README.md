@@ -48,10 +48,7 @@ The output jar file will be in the target/ directory.
 
 From scratch on an ubuntu box:
 
-apt-get install maven
-apt-get install git
-apt-get install gcc
-apt-get install openjdk-7-jdk openjdk-7-jre
+apt-get install maven git gcc openjdk-7-jdk openjdk-7-jre
 
 build statsd:
 
