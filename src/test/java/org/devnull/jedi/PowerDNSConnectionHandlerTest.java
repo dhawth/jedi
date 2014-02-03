@@ -366,9 +366,9 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 
 			for (int i = 0; i < 10; i++)
 			{
-				socket.getOutputStream().write("{\"method\":\"lookup\", \"parameters\":{\"qtype\":\"ANY\",\"qname\":\"foo.bar.baz\"}}\n".getBytes());
+				socket.getOutputStream().write("{\"method\":\"lookup\", \"parameters\":{\"qtype\":\"ANY\",\"qname\":\"FOO.bar.baz\"}}\n".getBytes());
 				String line = reader.readLine().trim();
-				assertTrue(line, "{\"result\":[{\"qname\":\"foo.bar.baz\",\"qtype\":\"A\",\"content\":\"1.1.1.1\",\"ttl\":100,\"priority\":0,\"auth\":1},{\"qname\":\"foo.bar.baz\",\"qtype\":\"AAAA\",\"content\":\"2001:fefe\",\"ttl\":100,\"priority\":0,\"auth\":1}]}".equals(line));
+				assertTrue(line, "{\"result\":[{\"qname\":\"FOO.bar.baz\",\"qtype\":\"A\",\"content\":\"1.1.1.1\",\"ttl\":100,\"priority\":0,\"auth\":1},{\"qname\":\"FOO.bar.baz\",\"qtype\":\"AAAA\",\"content\":\"2001:fefe\",\"ttl\":100,\"priority\":0,\"auth\":1}]}".equals(line));
 			}
 
 			//

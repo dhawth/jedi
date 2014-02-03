@@ -169,7 +169,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 				so.increment("PDNSCH.lookup_requests");
 
-				hostname = request.getDomain();
+				hostname = request.getDomain().toLowerCase();
 
 				//
 				// see if it is in local LRU cache
@@ -280,8 +280,6 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					}
 
 					writeRecordToSocket(writer, request, dnsRecord);
-
-					continue;
 				}
 				catch (TimeoutException te)
 				{
