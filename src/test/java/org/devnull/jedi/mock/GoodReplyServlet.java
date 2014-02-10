@@ -1,5 +1,7 @@
 package org.devnull.jedi.mock;
 
+import org.devnull.jedi.DNSRecordSet;
+
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -17,7 +19,7 @@ public class GoodReplyServlet extends HttpServlet
 
 		PrintWriter writer = response.getWriter();
 
-		String reply = "{\"ttl\":100,\"records\":[{\"address\":\"1.1.1.1\"},{\"address\":\"2001:fefe\"}]}";
+		String reply = "{\"fqdn\":\"ttl100.google.com\",\"ttl\":100,\"records\":[{\"type\":\"A\",\"address\":\"1.1.1.1\"},{\"type\":\"AAAA\",\"address\":\"2001::fefe\"},{\"type\":\"MX\",\"priority\":10,\"address\":\"mail1.bar.com\"}]}";
 		writer.print(reply);
 	}
 }

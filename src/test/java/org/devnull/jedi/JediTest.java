@@ -74,7 +74,7 @@ public class JediTest extends JsonBase
 			{
 				socket.getOutputStream().write("{\"method\":\"lookup\", \"parameters\":{\"qtype\":\"ANY\",\"qname\":\"foo.bar.baz\"}}\n".getBytes());
 				String line = reader.readLine();
-				assertTrue(line, "{\"result\":[{\"qname\":\"foo.bar.baz\",\"qtype\":\"A\",\"content\":\"1.1.1.1\",\"ttl\":100,\"priority\":0,\"auth\":1},{\"qname\":\"foo.bar.baz\",\"qtype\":\"AAAA\",\"content\":\"2001:fefe\",\"ttl\":100,\"priority\":0,\"auth\":1}]}".equals(line));
+				assertEquals("{\"result\":[{\"qname\":\"foo.bar.baz\",\"qtype\":\"A\",\"content\":\"1.1.1.1\",\"ttl\":100,\"priority\":0,\"auth\":1},{\"qname\":\"foo.bar.baz\",\"qtype\":\"AAAA\",\"content\":\"2001::fefe\",\"ttl\":100,\"priority\":0,\"auth\":1},{\"qname\":\"foo.bar.baz\",\"qtype\":\"MX\",\"content\":\"mail1.bar.com\",\"ttl\":100,\"priority\":10,\"auth\":1}]}", line);
 			}
 
 			socket.close();

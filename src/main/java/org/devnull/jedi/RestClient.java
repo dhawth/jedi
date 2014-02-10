@@ -17,6 +17,7 @@ import org.apache.http.impl.conn.BasicClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 import org.apache.http.NoHttpResponseException;
 import org.apache.log4j.Logger;
+import org.devnull.jedi.records.Record;
 import org.devnull.statsd_client.StatsObject;
 
 import java.io.IOException;
@@ -31,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * There is a safety measure built into this class that prevents it from attempting to read any response that is
  * larger than 8k bytes.
  */
-public class RestClient extends JsonBase implements Callable<DNSRecord>
+public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 {
 	private static final Logger log = Logger.getLogger(RestClient.class);
 
@@ -71,7 +72,6 @@ public class RestClient extends JsonBase implements Callable<DNSRecord>
 	/**
 	 * Constructor
 	 *
-	 * @param reusableQueue A thread-safe queue that is the object pool of reusable DNSRecord objects.
 	 * @param config        The main JediConfig object that includes REST server related config items.
 	 * @throws Exception When there are issues setting up the HTTP client objects using the config.
 	 */
@@ -161,7 +161,7 @@ public class RestClient extends JsonBase implements Callable<DNSRecord>
 	 * @throws Exception If there are errors processing the http get, interruptions in execution, etc.
 	 */
 	@Override
-	public DNSRecord call() throws Exception
+	public DNSRecordSet call() throws Exception
 	{
 		so.increment("RestClient.calls");
 
@@ -259,7 +259,7 @@ public class RestClient extends JsonBase implements Callable<DNSRecord>
 
 			try
 			{
-				DNSRecord r = mapper.readValue(instream, DNSRecord.class);
+				DNSRecordSet r = mapper.readValue(instream, DNSRecordSet.class);
 				r.setTimestamp(Now.getNow());
 
 				if (log.isDebugEnabled())

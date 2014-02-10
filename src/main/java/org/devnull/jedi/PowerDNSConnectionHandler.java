@@ -3,6 +3,9 @@ package org.devnull.jedi;
 import com.google.common.cache.Cache;
 import org.devnull.jedi.configs.JediConfig;
 import org.apache.log4j.Logger;
+import org.devnull.jedi.records.MXRecord;
+import org.devnull.jedi.records.Record;
+import org.devnull.jedi.records.SOARecord;
 import org.devnull.statsd_client.StatsObject;
 
 import java.io.*;
@@ -29,9 +32,9 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	private JediConfig config = null;
 	private Socket socket = null;
 	private RestClient restClient = null;
-	private Future<DNSRecord> future = null;
+	private Future<DNSRecordSet> future = null;
 	private ExecutorService apiPool = null;
-	private Cache<String, DNSRecord> cache = null;
+	private Cache<String, DNSRecordSet> cache = null;
 	private StringBuffer sb = new StringBuffer(1024);
 
 	/**
@@ -46,7 +49,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	public PowerDNSConnectionHandler(Socket client,
 					 final JediConfig config,
 					 final ExecutorService apiPool,
-					 final Cache<String, DNSRecord> cache)
+					 final Cache<String, DNSRecordSet> cache)
 		throws Exception
 	{
 		if (log.isDebugEnabled())
@@ -68,13 +71,13 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 */
 	public void run()
 	{
-		DNSRecord dnsRecord = null;
+		DNSRecordSet dnsRecordSet;
 		InputStream inStream = null;
 		OutputStream outStream = null;
 		BufferedReader reader = null;
 		BufferedWriter writer = null;
-		String hostname = null;
-		PDNSRequest request = null;
+		String hostname;
+		PDNSRequest request;
 		long cache_timeout = config.cache_timeout * 1000;
 
 		if (socket.isClosed())
@@ -155,18 +158,6 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					continue;
 				}
 
-				if (request.getQType().equals("SOA"))
-				{
-					//
-					// typical SOA request:
-					//
-					// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
-					//
-					so.increment("PDNSCH.SOA_requests");
-					writeSOAResponse(writer, request);
-					continue;
-				}
-
 				so.increment("PDNSCH.lookup_requests");
 
 				hostname = request.getDomain().toLowerCase();
@@ -181,11 +172,11 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						log.debug("looking up hostname " + hostname + " in LRU");
 					}
 
-					dnsRecord = cache.getIfPresent(hostname);
+					dnsRecordSet = cache.getIfPresent(hostname);
 
 					so.increment("PDNSCH.cache_lookups");
 
-					if (dnsRecord == null)
+					if (dnsRecordSet == null)
 					{
 						so.increment("PDNSCH.cache_misses");
 					}
@@ -201,7 +192,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						//
 						// test to see if record is too old
 						//
-						if (dnsRecord.getTimestamp() < (Now.getNow() - cache_timeout))
+						if (dnsRecordSet.getTimestamp() < (Now.getNow() - cache_timeout))
 						{
 							if (log.isDebugEnabled())
 							{
@@ -217,7 +208,21 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 								log.debug("cache record for hostname " + hostname + " is valid, sending it");
 							}
 							so.increment("PDNSCH.answers_served_from_cache");
-							writeRecordToSocket(writer, request, dnsRecord);
+
+							if (request.getQType().equals("SOA"))
+							{
+								//
+								// typical SOA request:
+								//
+								// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
+								//
+								so.increment("PDNSCH.SOA_requests");
+								writeSOAResponse(writer, request, dnsRecordSet);
+							}
+							else
+							{
+								writeRecordToSocket(writer, request, dnsRecordSet);
+							}
 							continue;
 						}
 					}
@@ -246,14 +251,14 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						log.debug("waiting for return from RestClient");
 					}
 
-					dnsRecord = future.get(config.rest_fetch_timeout, TimeUnit.MILLISECONDS);
+					dnsRecordSet = future.get(config.rest_fetch_timeout, TimeUnit.MILLISECONDS);
 
 					if (log.isDebugEnabled())
 					{
-						log.debug("got dnsRecord from RestClient: " + dnsRecord);
+						log.debug("got dnsRecord from RestClient: " + dnsRecordSet);
 					}
 
-					if (dnsRecord == null)
+					if (dnsRecordSet == null)
 					{
 						so.increment("PDNSCH.null_futures");
 
@@ -275,11 +280,24 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 					if (cache != null)
 					{
-						cache.put(hostname, dnsRecord);
+						cache.put(hostname, dnsRecordSet);
 						so.increment("PDNSCH.cache_inserts");
 					}
 
-					writeRecordToSocket(writer, request, dnsRecord);
+					if (request.getQType().equals("SOA"))
+					{
+						//
+						// typical SOA request:
+						//
+						// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
+						//
+						so.increment("PDNSCH.SOA_requests");
+						writeSOAResponse(writer, request, dnsRecordSet);
+					}
+					else
+					{
+						writeRecordToSocket(writer, request, dnsRecordSet);
+					}
 				}
 				catch (TimeoutException te)
 				{
@@ -403,9 +421,10 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 *
 	 * @param writer	The BufferedWriter created on the client socket's output stream
 	 * @param request	The original PDNSRequest read in from the client socket.
+	 * @param recordSet	The DNSRecordSet that has the SOA record in it for the requested FQDN.
 	 * @throws Exception	When there are issues writing to the socket.
 	 */
-	private void writeSOAResponse(final BufferedWriter writer, final PDNSRequest request) throws Exception
+	private void writeSOAResponse(final BufferedWriter writer, final PDNSRequest request, final DNSRecordSet recordSet) throws Exception
 	{
 		if (log.isDebugEnabled())
 		{
@@ -431,13 +450,15 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		 153	}
 		 */
 
+		SOARecord soa = recordSet.getSOA();
+
 		sb.setLength(0);
 		sb.append("{\"result\":[");
 
 		sb.append("{");
 		sb.append("\"qtype\":\"SOA\",");
 		sb.append("\"qname\":\"").append(request.getDomain()).append("\",");
-		sb.append("\"content\":\"dns1.icann.org. hostmaster.icann.org. 2001010000 7200 3600 1209600 3600\",");
+		sb.append("\"content\":\"").append(soa.getAddress()).append("\",");
 		sb.append("\"ttl\":3600,");
 		sb.append("\"priority\":0,");
 		sb.append("\"domain_id\":-1");
@@ -467,10 +488,10 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 *
 	 * @param writer	The BufferedWriter created on the client socket's output stream
 	 * @param request	The original PDNSRequest read in from the client socket.
-	 * @param record	The DNSRecord object comprising the result records for the given request.
+	 * @param recordSet	The DNSRecordSet object comprising the result records for the given request.
 	 * @throws Exception	When there are issues writing to the socket.
 	 */
-	private void writeRecordToSocket(final BufferedWriter writer, final PDNSRequest request, final DNSRecord record) throws Exception
+	private void writeRecordToSocket(final BufferedWriter writer, final PDNSRequest request, final DNSRecordSet recordSet) throws Exception
 	{
 		if (log.isDebugEnabled())
 		{
@@ -511,7 +532,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		//
 		// foreach IP, reply
 		//
-		for (IPRecord ip : record.getRecords())
+		for (Record r : recordSet.getRecords())
 		{
 			/*
 			rr(request.getDomain(), ip.getType(), ip.getAddress(), ttl)
@@ -523,10 +544,19 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 			sb.append("{");
 			sb.append("\"qname\":\"").append(request.getDomain()).append("\",");
-			sb.append("\"qtype\":\"").append(ip.getType()).append("\",");
-			sb.append("\"content\":\"").append(ip.getAddress()).append("\",");
-			sb.append("\"ttl\":").append(record.getTTL()).append(",");
-			sb.append("\"priority\":0,");
+			sb.append("\"qtype\":\"").append(r.getType()).append("\",");
+			sb.append("\"content\":\"").append(r.getAddress()).append("\",");
+			sb.append("\"ttl\":").append(recordSet.getTTL()).append(",");
+
+			if (r.getType().equals("MX"))
+			{
+				sb.append("\"priority\":").append(((MXRecord)r).getPriority()).append(",");
+			}
+			else
+			{
+				sb.append("\"priority\":0,");
+			}
+
 			sb.append("\"auth\":1");
 			sb.append("},");
 		}

@@ -29,7 +29,7 @@ public final class Jedi extends JsonBase implements Runnable
 	private boolean done = false;
 	private JediConfig config = null;
 	private StatsObject so = StatsObject.getInstance();
-	private Cache<String, DNSRecord> cache = null;
+	private Cache<String, DNSRecordSet> cache = null;
 
 	/*
 	 * main routine used when starting up Jedi, e.g.:

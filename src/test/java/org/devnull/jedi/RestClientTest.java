@@ -2,6 +2,7 @@ package org.devnull.jedi;
 
 import org.devnull.jedi.configs.JediConfig;
 import org.devnull.jedi.mock.*;
+import org.devnull.jedi.records.*;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
@@ -59,7 +60,7 @@ public class RestClientTest
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 	}
 
@@ -75,7 +76,7 @@ public class RestClientTest
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 	}
 
@@ -92,7 +93,7 @@ public class RestClientTest
 		{
 			log.debug("testing failure when no hostname is set");
 			client = new RestClient(new JediConfig());
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertTrue(false);
 		}
 		catch (NullPointerException npe)
@@ -102,7 +103,7 @@ public class RestClientTest
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 
 		/**
@@ -112,13 +113,13 @@ public class RestClientTest
 		{
 			log.info("testing against a server that is rejecting connections");
 			client.setHostname("foo.bar.baz");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 
 		/**
@@ -133,13 +134,13 @@ public class RestClientTest
 		{
 			log.info("testing against an API server that doesn't support authentication");
 			mock = new MockAPIServer(new HelloServlet(), false, null, null);
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{
@@ -154,13 +155,13 @@ public class RestClientTest
 		{
 			log.info("testing against an API server with mismatched authentication");
 			mock = new MockAPIServer(new HelloServlet(), true, "bar", "foo");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{
@@ -175,13 +176,13 @@ public class RestClientTest
 		{
 			log.info("testing against an API server that returns 404");
 			mock = new MockAPIServer(new BadReplyServlet(), true, "foo", "bar");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{
@@ -196,13 +197,13 @@ public class RestClientTest
 		{
 			log.info("testing against an API sever that gives an empty response");
 			mock = new MockAPIServer(new EmptyReplyServlet(), true, "foo", "bar");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{
@@ -217,13 +218,13 @@ public class RestClientTest
 		{
 			log.info("testing against an API server that gives a too long reply");
 			mock = new MockAPIServer(new TooLongReplyServlet(), true, "foo", "bar");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{
@@ -238,13 +239,13 @@ public class RestClientTest
 		{
 			log.info("testing against a non-json reply");
 			mock = new MockAPIServer(new HelloServlet(), true, "foo", "bar");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNull(r);
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{
@@ -259,21 +260,30 @@ public class RestClientTest
 		{
 			log.info("testing against a good reply");
 			mock = new MockAPIServer(new GoodReplyServlet(), true, "foo", "bar");
-			DNSRecord r = client.call();
+			DNSRecordSet r = client.call();
 			assertNotNull(r);
 			assertTrue(r.toString(), r.getTTL() == 100);
 			assertNotNull(r.getRecords());
-			List<IPRecord> ips = r.getRecords();
-			assertTrue(r.toString(), ips.size() == 2);
+			List<Record> ips = r.getRecords();
+			log.debug("Record Set: " + r.toString());
+			assertTrue(r.toString(), ips.size() == 3);
+			assertTrue(r.toString(), ips.get(0) instanceof ARecord);
 			assertTrue(r.toString(), ips.get(0).getType().equals("A"));
 			assertTrue(r.toString(), ips.get(0).getAddress().equals("1.1.1.1"));
+			assertTrue(r.toString(), ips.get(1) instanceof AAAARecord);
 			assertTrue(r.toString(), ips.get(1).getType().equals("AAAA"));
-			assertTrue(r.toString(), ips.get(1).getAddress().equals("2001:fefe"));
+			assertTrue(r.toString(), ips.get(1).getAddress().equals("2001::fefe"));
+			assertTrue(r.toString(), ips.get(2) instanceof MXRecord);
+			assertTrue(r.toString(), ips.get(2).getType().equals("MX"));
+			assertTrue(r.toString(), ips.get(2).getAddress().equals("mail1.bar.com"));
+			assertEquals(((MXRecord)ips.get(2)).getPriority(), 10);
+
+			assertNotNull(r.getSOA());
 		}
 		catch (Exception e)
 		{
 			e.printStackTrace();
-			assertTrue(e.getMessage(), false);
+			fail(e.getMessage());
 		}
 		finally
 		{

@@ -1,12 +1,15 @@
 package org.devnull.jedi;
 
+import org.devnull.jedi.records.Record;
+import org.devnull.jedi.records.SOARecord;
+
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Encapsulates the IP addresses and associated TTL information for a DNS reply
  */
-public class DNSRecord extends JsonBase
+public class DNSRecordSet extends JsonBase
 {
 	/**
 	 * Default TTL is 300 seconds, 5 minutes, and can be overridden by the API server.
@@ -14,19 +17,38 @@ public class DNSRecord extends JsonBase
 
 	private static long DEFAULT_TTL = 300;
 
-	private List<IPRecord> records = new ArrayList<IPRecord>();
+	private List<Record> records = new ArrayList<Record>();
 	private long timestamp = 0L;
 	private long ttl = 300;
+	private SOARecord soa;
 
-	public List<IPRecord> getRecords()
+	public DNSRecordSet()
+	{
+		//
+		// set a default soa record
+		//
+		soa = new SOARecord();
+		soa.setAddress("dns1.icann.org. hostmaster.icann.org. 2012080849 7200 3600 1209600 3600");
+	}
+
+	public List<Record> getRecords()
 	{
 		return records;
 	}
 
-	public void addRecord(final IPRecord r)
+	public void addRecord(final Record r)
 	{
-		records.add(r);
+		if (r instanceof SOARecord)
+		{
+			soa = (SOARecord)r;
+		}
+
 		timestamp = Now.getNow();
+	}
+
+	public SOARecord getSOA()
+	{
+		return this.soa;
 	}
 
 	public long getTimestamp()
