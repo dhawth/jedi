@@ -266,19 +266,26 @@ public class RestClientTest
 			assertNotNull(r.getRecords());
 			List<Record> ips = r.getRecords();
 			log.debug("Record Set: " + r.toString());
-			assertTrue(r.toString(), ips.size() == 3);
-			assertTrue(r.toString(), ips.get(0) instanceof ARecord);
-			assertTrue(r.toString(), ips.get(0).getType().equals("A"));
-			assertTrue(r.toString(), ips.get(0).getAddress().equals("1.1.1.1"));
-			assertTrue(r.toString(), ips.get(1) instanceof AAAARecord);
-			assertTrue(r.toString(), ips.get(1).getType().equals("AAAA"));
-			assertTrue(r.toString(), ips.get(1).getAddress().equals("2001::fefe"));
-			assertTrue(r.toString(), ips.get(2) instanceof MXRecord);
-			assertTrue(r.toString(), ips.get(2).getType().equals("MX"));
-			assertTrue(r.toString(), ips.get(2).getAddress().equals("mail1.bar.com"));
-			assertEquals(((MXRecord)ips.get(2)).getPriority(), 10);
+			assertTrue(r.toString(), ips.size() == 4);
+            assertTrue(r.toString(), ips.get(0) instanceof SOARecord);
+            assertTrue(r.toString(), ips.get(0).getType().equals("SOA"));
+            assertTrue(r.toString(), ips.get(0).getAddress().equals("foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600"));
+			assertTrue(r.toString(), ips.get(1) instanceof ARecord);
+			assertTrue(r.toString(), ips.get(1).getType().equals("A"));
+			assertTrue(r.toString(), ips.get(1).getAddress().equals("1.1.1.1"));
+			assertTrue(r.toString(), ips.get(2) instanceof AAAARecord);
+			assertTrue(r.toString(), ips.get(2).getType().equals("AAAA"));
+			assertTrue(r.toString(), ips.get(2).getAddress().equals("2001::fefe"));
+			assertTrue(r.toString(), ips.get(3) instanceof MXRecord);
+			assertTrue(r.toString(), ips.get(3).getType().equals("MX"));
+			assertTrue(r.toString(), ips.get(3).getAddress().equals("mail1.bar.com"));
+			assertEquals(((MXRecord)ips.get(3)).getPriority(), 10);
 
 			assertNotNull(r.getSOA());
+
+            SOARecord soa = r.getSOA();
+
+            assertEquals(soa.getAddress(), "foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600");
 		}
 		catch (Exception e)
 		{

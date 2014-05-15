@@ -534,6 +534,14 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		//
 		for (Record r : recordSet.getRecords())
 		{
+            //
+            // skip SOA records.  only return these when they are asked for
+            //
+            if (r instanceof SOARecord)
+            {
+                continue;
+            }
+
 			/*
 			rr(request.getDomain(), ip.getType(), ip.getAddress(), ttl)
 

@@ -19,7 +19,7 @@ public class GoodReplyServlet extends HttpServlet
 
 		PrintWriter writer = response.getWriter();
 
-		String reply = "{\"fqdn\":\"ttl100.google.com\",\"ttl\":100,\"records\":[{\"type\":\"A\",\"address\":\"1.1.1.1\"},{\"type\":\"AAAA\",\"address\":\"2001::fefe\"},{\"type\":\"MX\",\"priority\":10,\"address\":\"mail1.bar.com\"}]}";
+		String reply = "{\"fqdn\":\"ttl100.google.com\",\"ttl\":100,\"records\":[{\"type\":\"SOA\",\"address\":\"foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600\"},{\"type\":\"A\",\"address\":\"1.1.1.1\"},{\"type\":\"AAAA\",\"address\":\"2001::fefe\"},{\"type\":\"MX\",\"priority\":10,\"address\":\"mail1.bar.com\"}]}";
 		writer.print(reply);
 	}
 }

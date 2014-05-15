@@ -43,7 +43,6 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 	private Socket socket = null;
 	private MockAPIServer mock = null;
 	protected ThreadPoolExecutor apiPool = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(1));
-	protected ThreadPoolExecutor executor = new ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(1));
 	protected Cache<String, DNSRecordSet> cache = CacheBuilder.newBuilder().maximumSize(1).build();
 	protected JediConfig config = new JediConfig();
 
