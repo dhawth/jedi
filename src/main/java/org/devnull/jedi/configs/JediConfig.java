@@ -62,6 +62,16 @@ public class JediConfig extends JsonBase
 	public int jedi_listen_port = 5300;
 
 	/**
+	 * The path to the UNIX domain socket to bind to for listening to connections from PowerDNS.  This will be used
+	 * iff the junixsocket library is installed.  I was going to use libmatthew for this, but the lack of documentation
+	 * and Makefile to build it were a problem.
+	 * <p/>
+	 * If the value is null, a unix socket server is not instantiated, and there will be no UnsatisfiedLinkError
+	 * exceptions if it cannot load the junixsocket library.
+	 */
+	public String unix_socket_path = null;
+
+	/**
 	 * maximum number of DNSRecord objects to cache in memory in the LRU.  Tune this to protect memory usage.
 	 */
 	public Long max_items_in_cache = 10000L;

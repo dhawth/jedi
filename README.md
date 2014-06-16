@@ -50,7 +50,7 @@ The output jar file will be in the target/ directory.
 
 From scratch on an ubuntu box:
 
-apt-get install maven git gcc openjdk-7-jdk openjdk-7-jre
+apt-get install ant maven git gcc openjdk-7-jdk openjdk-7-jre
 
 build statsd:
 
@@ -62,6 +62,20 @@ Build jedi:
 
 mvn clean package
 ls target/jedi-1.0.0-jar-with-dependencies.jar
+
+Build the junixsocket C library if you want Jedi to speak unix sockets natively.  These
+libraries are only used and the unix socket support is only enabled if you specify a
+unix_socket_path in the jedi.conf.  It defaults to null so you won't get any
+UnsatisfiedLinkError exceptions at runtime.
+
+cd 3rdparty/junixsocket-1.3
+ant jars
+
+This puts 2 .so files into 3rdparty/junixsocket-1.3/lib-native that will need to be in your
+LD_LIBRARY_PATH (or DYLD_LIBRARY_PATH on OS X) when you start up Jedi.  Note that you need
+not do anything special with the .jars it creates, the important one is already included
+in the monolithic jar that Jedi's build process produces.  You only need to concern yourself
+with the .so files.
 
 Build darkside according to the instructions there.  There's a gotcha involving a localhost
 mock dynamo instance requirement for the tests to pass, and it requires java 7.

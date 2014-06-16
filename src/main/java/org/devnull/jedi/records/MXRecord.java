@@ -1,7 +1,5 @@
 package org.devnull.jedi.records;
 
-import java.util.StringTokenizer;
-
 /**
  * IPRecord encapsulates the string of the IP address and the type: A or AAAA used
  * in the DNS reply.  The type is set automatically when the address is set.
@@ -53,13 +51,13 @@ public class MXRecord extends Record
 		}
 	}
 
-	public void setPriority(final int p)
-	{
-		priority = p;
-	}
-
 	public int getPriority()
 	{
 		return priority;
+	}
+
+	public void setPriority(final int p)
+	{
+		priority = p;
 	}
 }

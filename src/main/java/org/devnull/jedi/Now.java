@@ -37,7 +37,7 @@ public class Now extends JsonBase
 	/**
 	 * Retrieve the most current timestamp cached.
 	 *
-	 * @return	long representing the System.currentTimeMillis() that was recently cached.  This value is updated
+	 * @return long representing the System.currentTimeMillis() that was recently cached.  This value is updated
 	 * once per second.
 	 */
 	public static long getNow()

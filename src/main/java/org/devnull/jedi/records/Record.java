@@ -32,7 +32,7 @@ public abstract class Record extends JsonBase
 		return type;
 	}
 
-	public abstract void setAddress(final String address) throws Exception;
-
 	public abstract String getAddress();
+
+	public abstract void setAddress(final String address) throws Exception;
 }

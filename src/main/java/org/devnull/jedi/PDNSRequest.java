@@ -51,7 +51,8 @@ public class PDNSRequest extends JsonBase
 
 	/**
 	 * getParameters returns the internal parameters map, and is required by Jackson for inserting qname and qtype.
-	 * @return	HashMap of string to string representing the parameters list.
+	 *
+	 * @return HashMap of string to string representing the parameters list.
 	 */
 	public Map<String, String> getParameters()
 	{
@@ -65,6 +66,7 @@ public class PDNSRequest extends JsonBase
 
 	/**
 	 * accessor for the method string
+	 *
 	 * @return String, e.g. initialize|lookup
 	 */
 	public String getMethod()
@@ -79,6 +81,7 @@ public class PDNSRequest extends JsonBase
 
 	/**
 	 * Return the value of the "qname" parameter if it is set.
+	 *
 	 * @return String or null if the parameter is not set, ie in an initialization request.
 	 */
 	@JsonIgnore
@@ -94,6 +97,7 @@ public class PDNSRequest extends JsonBase
 
 	/**
 	 * Returns the value of the "qtype" parameter if it is set.
+	 *
 	 * @return String (SOA|ANY|A|AAAA, etc) or null if the parameter is not set, ie in an initialization request.
 	 */
 	@JsonIgnore

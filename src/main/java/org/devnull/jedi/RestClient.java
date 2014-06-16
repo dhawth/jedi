@@ -1,23 +1,22 @@
 package org.devnull.jedi;
 
 import com.fasterxml.jackson.core.JsonParseException;
-import org.devnull.jedi.configs.JediConfig;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
+import org.apache.http.NoHttpResponseException;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.auth.params.AuthPNames;
+import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.params.AuthPolicy;
-import org.apache.http.client.HttpRequestRetryHandler;
-import org.apache.http.protocol.HttpContext;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.conn.BasicClientConnectionManager;
+import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
-import org.apache.http.NoHttpResponseException;
 import org.apache.log4j.Logger;
-import org.devnull.jedi.records.Record;
+import org.devnull.jedi.configs.JediConfig;
 import org.devnull.statsd_client.StatsObject;
 
 import java.io.IOException;
@@ -50,14 +49,11 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	 * A counter to keep track of how many of these things we've created, for id purposes.
 	 */
 	private static final AtomicLong instanceCounter = new AtomicLong(0);
-
-	private String instanceName = null;
-
 	/**
 	 * for statsd stats
 	 */
 	private static final StatsObject so = StatsObject.getInstance();
-
+	private String instanceName = null;
 	/**
 	 * variables related to the fetching of data from the REST servers
 	 */
@@ -72,7 +68,7 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	/**
 	 * Constructor
 	 *
-	 * @param config        The main JediConfig object that includes REST server related config items.
+	 * @param config The main JediConfig object that includes REST server related config items.
 	 * @throws Exception When there are issues setting up the HTTP client objects using the config.
 	 */
 	public RestClient(final JediConfig config)
@@ -87,11 +83,13 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 
 			if (config.rest_server_hostname == null || config.rest_username == null || config.rest_password == null)
 			{
-				throw new IllegalArgumentException("rest_server_hostname, rest_username, or rest_password is null");
+				throw new IllegalArgumentException(
+					"rest_server_hostname, rest_username, or rest_password is null");
 			}
 
 			httpClient = new DefaultHttpClient(new BasicClientConnectionManager());
-			httpClient.getParams().setParameter(AuthPNames.PROXY_AUTH_PREF, Arrays.asList(AuthPolicy.DIGEST));
+			httpClient.getParams()
+				  .setParameter(AuthPNames.PROXY_AUTH_PREF, Arrays.asList(AuthPolicy.DIGEST));
 			httpClient.getCredentialsProvider().setCredentials
 				(
 					new AuthScope(config.rest_server_hostname, config.rest_server_port),
@@ -133,16 +131,6 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	}
 
 	/**
-	 * setter for setting the hostname that is to be looked up by this client when it is submitted to the execution service.
-	 *
-	 * @param hostname the hostname to ask the REST server about
-	 */
-	public void setHostname(final String hostname)
-	{
-		this.hostname = hostname;
-	}
-
-	/**
 	 * getter for the hostname
 	 *
 	 * @return the current hostname that is being looked up by this object.
@@ -150,6 +138,16 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	public String getHostname()
 	{
 		return hostname;
+	}
+
+	/**
+	 * setter for setting the hostname that is to be looked up by this client when it is submitted to the execution service.
+	 *
+	 * @param hostname the hostname to ask the REST server about
+	 */
+	public void setHostname(final String hostname)
+	{
+		this.hostname = hostname;
 	}
 
 	/**
@@ -220,7 +218,8 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 			{
 				if (log.isDebugEnabled())
 				{
-					log.debug(instanceName + " query for " + hostname + " returned an empty content body, returning null");
+					log.debug(
+						instanceName + " query for " + hostname + " returned an empty content body, returning null");
 				}
 
 				so.increment("RestClient.returned_null.empty_query_body");
@@ -248,7 +247,8 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 			{
 				if (log.isDebugEnabled())
 				{
-					log.debug(instanceName + " query for " + hostname + " returned an empty or too large content body");
+					log.debug(
+						instanceName + " query for " + hostname + " returned an empty or too large content body");
 				}
 
 				so.increment("RestClient.returned_null.content_too_long");
@@ -309,7 +309,8 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 		catch (Exception e)
 		{
 			so.increment("RestClient.total_exceptions");
-			log.info(instanceName + " got exception fetching record for " + hostname + " from REST server: " + e);
+			log.info(
+				instanceName + " got exception fetching record for " + hostname + " from REST server: " + e);
 		}
 		finally
 		{

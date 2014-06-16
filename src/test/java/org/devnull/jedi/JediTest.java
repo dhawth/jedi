@@ -91,7 +91,7 @@ public class JediTest extends JsonBase
 			mock.shutdown();
 		}
 
-		jedi.shutdown();
+		jediThread.interrupt();
 		jediThread.join(2000L);
 		assertTrue(!jediThread.isAlive());
 

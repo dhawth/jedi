@@ -2,14 +2,16 @@ package org.devnull.jedi;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import org.devnull.jedi.configs.JediConfig;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
+import org.devnull.jedi.configs.JediConfig;
 import org.devnull.statsd_client.Shipper;
 import org.devnull.statsd_client.ShipperFactory;
 import org.devnull.statsd_client.StatsObject;
+import org.newsclub.net.unix.AFUNIXServerSocket;
+import org.newsclub.net.unix.AFUNIXSocketAddress;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,38 +28,9 @@ import java.util.concurrent.TimeUnit;
 public final class Jedi extends JsonBase implements Runnable
 {
 	private static Logger log = null;
-	private boolean done = false;
 	private JediConfig config = null;
 	private StatsObject so = StatsObject.getInstance();
 	private Cache<String, DNSRecordSet> cache = null;
-
-	/*
-	 * main routine used when starting up Jedi, e.g.:
-	 * java -jar jedi.jar -l log4j.conf -c jedi.conf
-	 *
-	 * @param args	a list of Strings, e.g. -l, log4j.conf, -c, jedi.conf
-	 * @return	nothing
-	 *
-	 */
-	public static void main(String args[])
-	{
-		try
-		{
-			BasicConfigurator.configure();
-			Jedi p = new Jedi(args);
-			Thread jediThread = new Thread(p, "Jedi");
-			jediThread.start();
-			jediThread.join();
-		}
-		catch (Exception e)
-		{
-			log.error(e);
-			e.printStackTrace();
-			System.exit(1);
-		}
-
-		System.exit(0);
-	}
 
 	/**
 	 * Reads command line arguments and starts the service.
@@ -118,6 +91,32 @@ public final class Jedi extends JsonBase implements Runnable
 	}
 
 	/*
+	     * main routine used when starting up Jedi, e.g.:
+	     * java -jar jedi.jar -l log4j.conf -c jedi.conf
+	     *
+	     * @param args	a list of Strings, e.g. -l, log4j.conf, -c, jedi.conf
+	     * @return	nothing
+	     *
+	     */
+	public static void main(String args[])
+	{
+		try
+		{
+			BasicConfigurator.configure();
+			Jedi p = new Jedi(args);
+			p.run();
+		}
+		catch (Exception e)
+		{
+			log.error(e);
+			e.printStackTrace();
+			System.exit(1);
+		}
+
+		System.exit(0);
+	}
+
+	/*
 	 * run() continues until shutdown() is called
 	 */
 
@@ -140,12 +139,13 @@ public final class Jedi extends JsonBase implements Runnable
 			{
 				if (log.isDebugEnabled())
 				{
-					log.debug("building LRU cache with " + config.max_items_in_cache + " max items");
+					log.debug(
+						"building LRU cache with " + config.max_items_in_cache + " max items");
 				}
 
 				cache = CacheBuilder.newBuilder()
-					.maximumSize(config.max_items_in_cache)
-					.build();
+						    .maximumSize(config.max_items_in_cache)
+						    .build();
 			}
 
 			//
@@ -167,8 +167,9 @@ public final class Jedi extends JsonBase implements Runnable
 
 			if (log.isDebugEnabled())
 			{
-				log.debug("building a fixed threadpool for answering socket connections from powerdns with " +
-					poolSize + " threads");
+				log.debug(
+					"building a fixed threadpool for answering socket connections from powerdns with " +
+						poolSize + " threads");
 			}
 
 			//
@@ -176,15 +177,23 @@ public final class Jedi extends JsonBase implements Runnable
 			//
 			ExecutorService executor = Executors.newFixedThreadPool(poolSize);
 			ServerSocket server = null;
+			Thread unixSocketThread = null;
 
 			try
 			{
+				if (config.unix_socket_path != null)
+				{
+					unixSocketThread = new Thread(new UnixSocketServer(config, executor, apiPool),
+								      "UnixSocketServer");
+					unixSocketThread.start();
+				}
+
 				server = new ServerSocket(config.jedi_listen_port);
 				server.setSoTimeout(1000);
 
 				Socket client = null;
 
-				while (!done)
+				while (!Thread.currentThread().isInterrupted())
 				{
 					try
 					{
@@ -192,12 +201,19 @@ public final class Jedi extends JsonBase implements Runnable
 
 						if (log.isDebugEnabled())
 						{
-							log.debug("starting a ConnectionHandler for client connection: " + client.toString());
+							log.debug(
+								"starting a ConnectionHandler for client connection: " + client
+									.toString());
 						}
 
 						so.increment("Jedi.connections_accepted");
 
-						executor.execute(new PowerDNSConnectionHandler(client, config, apiPool, cache));
+						executor.execute(
+							new PowerDNSConnectionHandler(client, config, apiPool, cache));
+					}
+					catch (InterruptedException e)
+					{
+						break;
 					}
 					catch (SocketTimeoutException e)
 					{
@@ -209,7 +225,6 @@ public final class Jedi extends JsonBase implements Runnable
 						e.printStackTrace();
 					}
 				}
-
 			}
 			catch (IOException e)
 			{
@@ -233,6 +248,13 @@ public final class Jedi extends JsonBase implements Runnable
 			}
 
 			log.info("shutting down");
+
+			if (unixSocketThread != null)
+			{
+				log.info("shutting down unix server socket thread");
+				unixSocketThread.interrupt();
+				unixSocketThread.join(2000);
+			}
 
 			try
 			{
@@ -259,7 +281,6 @@ public final class Jedi extends JsonBase implements Runnable
 			catch (InterruptedException ie)
 			{
 				executor.shutdownNow();
-				Thread.currentThread().interrupt();
 			}
 
 			//
@@ -316,11 +337,73 @@ public final class Jedi extends JsonBase implements Runnable
 		log = Logger.getLogger(Jedi.class);
 	}
 
-	/**
-	 * sets done to true so the run() routine will stop accepting connections and return.
-	 */
-	public void shutdown()
+	private class UnixSocketServer implements Runnable
 	{
-		done = true;
+		private ExecutorService socketExecutorService;
+		private ExecutorService apiExecutorService;
+		private JediConfig config;
+		private AFUNIXServerSocket server = null;
+
+		public UnixSocketServer(final JediConfig config, final ExecutorService executorService,
+					final ExecutorService apiPool)
+			throws Exception
+		{
+			this.config = config;
+			this.socketExecutorService = executorService;
+			this.apiExecutorService = apiPool;
+
+			server = AFUNIXServerSocket.newInstance();
+			server.bind(new AFUNIXSocketAddress(new File(config.unix_socket_path)));
+		}
+
+		public void run()
+		{
+			try
+			{
+				while (!Thread.currentThread().isInterrupted())
+				{
+					try
+					{
+						Socket client = server.accept();
+
+						if (log.isDebugEnabled())
+						{
+							log.debug(
+								"starting a ConnectionHandler for client connection: " + client
+									.toString());
+						}
+
+						so.increment("Jedi.connections_accepted");
+
+						socketExecutorService.execute(
+							new PowerDNSConnectionHandler(client, config,
+										      apiExecutorService, cache));
+					}
+					catch (InterruptedException e)
+					{
+						log.debug("caught interrupt, leaving unix server socket runloop");
+						break;
+					}
+					catch (Exception e)
+					{
+						so.increment("Jedi.exceptions_in_connection_handling");
+						log.info("exception handling client connection", e);
+					}
+				}
+			}
+			finally
+			{
+				try
+				{
+					server.close();
+				}
+				catch (IOException e)
+				{
+					log.warn("Error closing Unix server socket", e);
+				}
+
+				server = null;
+			}
+		}
 	}
 }

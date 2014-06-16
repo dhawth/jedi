@@ -1,16 +1,27 @@
 package org.devnull.jedi;
 
 import com.google.common.cache.Cache;
-import org.devnull.jedi.configs.JediConfig;
 import org.apache.log4j.Logger;
+import org.devnull.jedi.configs.JediConfig;
 import org.devnull.jedi.records.MXRecord;
 import org.devnull.jedi.records.Record;
 import org.devnull.jedi.records.SOARecord;
 import org.devnull.statsd_client.StatsObject;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.Socket;
-import java.util.concurrent.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * The PowerDNSConnectionHandler reads input lines (strings) from the client socket, parses
@@ -40,11 +51,11 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	/**
 	 * Constructor
 	 *
-	 * @param client	The client Socket object
-	 * @param config	The JediConfig
-	 * @param apiPool	The ExecutorService used to execute RestClient requests
-	 * @param cache		The results Cache
-	 * @throws Exception	On issues setting up an RestClient using the config object
+	 * @param client  The client Socket object
+	 * @param config  The JediConfig
+	 * @param apiPool The ExecutorService used to execute RestClient requests
+	 * @param cache   The results Cache
+	 * @throws Exception On issues setting up an RestClient using the config object
 	 */
 	public PowerDNSConnectionHandler(Socket client,
 					 final JediConfig config,
@@ -196,7 +207,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						{
 							if (log.isDebugEnabled())
 							{
-								log.debug("cache record for hostname " + hostname + " is too old, removing it");
+								log.debug(
+									"cache record for hostname " + hostname + " is too old, removing it");
 							}
 							so.increment("PDNSCH.cache_expirations");
 							cache.invalidate(hostname);
@@ -205,7 +217,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						{
 							if (log.isDebugEnabled())
 							{
-								log.debug("cache record for hostname " + hostname + " is valid, sending it");
+								log.debug(
+									"cache record for hostname " + hostname + " is valid, sending it");
 							}
 							so.increment("PDNSCH.answers_served_from_cache");
 
@@ -273,7 +286,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 					if (log.isDebugEnabled())
 					{
-						log.debug("adding cache entry for hostname " + hostname + " to the LRU");
+						log.debug(
+							"adding cache entry for hostname " + hostname + " to the LRU");
 					}
 
 					so.increment("PDNSCH.successful_futures");
@@ -303,7 +317,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 				{
 					if (log.isDebugEnabled())
 					{
-						log.debug("Future timed out, cancelling it and returning empty response");
+						log.debug(
+							"Future timed out, cancelling it and returning empty response");
 					}
 					so.increment("PDNSCH.futures_exceptions.TimeoutException");
 					future.cancel(true);
@@ -419,12 +434,13 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	/**
 	 * Writes an SOA response object to the given writer for the given SOA PDNSRequest.
 	 *
-	 * @param writer	The BufferedWriter created on the client socket's output stream
-	 * @param request	The original PDNSRequest read in from the client socket.
-	 * @param recordSet	The DNSRecordSet that has the SOA record in it for the requested FQDN.
-	 * @throws Exception	When there are issues writing to the socket.
+	 * @param writer    The BufferedWriter created on the client socket's output stream
+	 * @param request   The original PDNSRequest read in from the client socket.
+	 * @param recordSet The DNSRecordSet that has the SOA record in it for the requested FQDN.
+	 * @throws Exception When there are issues writing to the socket.
 	 */
-	private void writeSOAResponse(final BufferedWriter writer, final PDNSRequest request, final DNSRecordSet recordSet) throws Exception
+	private void writeSOAResponse(final BufferedWriter writer, final PDNSRequest request,
+				      final DNSRecordSet recordSet) throws Exception
 	{
 		if (log.isDebugEnabled())
 		{
@@ -486,12 +502,13 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 * Writes an DNSRecord object to the given writer for the given PDNSRequest.
 	 * This function is used when we have a positive (successful) reply for the request.
 	 *
-	 * @param writer	The BufferedWriter created on the client socket's output stream
-	 * @param request	The original PDNSRequest read in from the client socket.
-	 * @param recordSet	The DNSRecordSet object comprising the result records for the given request.
-	 * @throws Exception	When there are issues writing to the socket.
+	 * @param writer    The BufferedWriter created on the client socket's output stream
+	 * @param request   The original PDNSRequest read in from the client socket.
+	 * @param recordSet The DNSRecordSet object comprising the result records for the given request.
+	 * @throws Exception When there are issues writing to the socket.
 	 */
-	private void writeRecordToSocket(final BufferedWriter writer, final PDNSRequest request, final DNSRecordSet recordSet) throws Exception
+	private void writeRecordToSocket(final BufferedWriter writer, final PDNSRequest request,
+					 final DNSRecordSet recordSet) throws Exception
 	{
 		if (log.isDebugEnabled())
 		{
@@ -534,13 +551,13 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		//
 		for (Record r : recordSet.getRecords())
 		{
-            //
-            // skip SOA records.  only return these when they are asked for
-            //
-            if (r instanceof SOARecord)
-            {
-                continue;
-            }
+			//
+			// skip SOA records.  only return these when they are asked for
+			//
+			if (r instanceof SOARecord)
+			{
+				continue;
+			}
 
 			/*
 			rr(request.getDomain(), ip.getType(), ip.getAddress(), ttl)
@@ -558,7 +575,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 			if (r.getType().equals("MX"))
 			{
-				sb.append("\"priority\":").append(((MXRecord)r).getPriority()).append(",");
+				sb.append("\"priority\":").append(((MXRecord) r).getPriority()).append(",");
 			}
 			else
 			{
@@ -596,8 +613,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 * Writes an empty (negative) reply to the socket, e.g. {"result":false}
 	 * This is used when there is no answer known, either because it DNE or because of a timeout fetching it, etc.
 	 *
-	 * @param writer	The BufferedWriter created on the socket's output stream.
-	 * @throws Exception	On errors writing to the socket.
+	 * @param writer The BufferedWriter created on the socket's output stream.
+	 * @throws Exception On errors writing to the socket.
 	 */
 	private void writeEmptyRecordToSocket(final BufferedWriter writer) throws Exception
 	{
@@ -614,8 +631,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 * Writes an empty (positive) reply to the socket, e.g. {"result":true}
 	 * This is used only for answering initialization requests from PowerDNS.
 	 *
-	 * @param writer	The BufferedWriter created on the socket's output stream.
-	 * @throws Exception	On errors writing to the socket.
+	 * @param writer The BufferedWriter created on the socket's output stream.
+	 * @throws Exception On errors writing to the socket.
 	 */
 	private void writeOKToSocket(final BufferedWriter writer) throws Exception
 	{
@@ -628,8 +645,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	 * Checks to make sure the method is set and is either initialize|lookup, and that there is a hostname
 	 * in the lookup request.
 	 *
-	 * @param r	The PDNSRequest object received from the client socket.
-	 * @return	True if the request is valid, false if it is not.
+	 * @param r The PDNSRequest object received from the client socket.
+	 * @return True if the request is valid, false if it is not.
 	 */
 	private boolean validateRequest(final PDNSRequest r)
 	{
