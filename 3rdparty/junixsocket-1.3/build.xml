@@ -137,15 +137,9 @@
 
 		<echo message="jdk.home is ${jdk.home}" />
 
-		<antcall target="gcc-mac.32" />
 		<antcall target="gcc-mac.64" />
 	</target>
 
-	<target name="gcc-mac.32" unless="skip32">
-		<antcall target="gcc-mac.arch">
-			<param name="gccArch" value="i386" />
-		</antcall>
-	</target>
 	<target name="gcc-mac.64" unless="skip64">
 		<antcall target="gcc-mac.arch">
 			<param name="gccArch" value="x86_64" />
@@ -178,16 +172,9 @@
 
 		<echo message="jdk.home is ${jdk.home}" />
 
-		<antcall target="gcc-linux.32" />
 		<antcall target="gcc-linux.64" />
 	</target>
 
-	<target name="gcc-linux.32" unless="skip32">
-		<antcall target="gcc-linux.arch">
-			<param name="gccArch" value="i386" />
-			<param name="gccM" value="-m32" />
-		</antcall>
-	</target>
 	<target name="gcc-linux.64" unless="skip64">
 		<antcall target="gcc-linux.arch">
 			<param name="gccArch" value="amd64" />
@@ -221,16 +208,9 @@
 
 		<echo message="jdk.home is ${jdk.home}" />
 
-		<antcall target="gcc-sunos.32" />
 		<antcall target="gcc-sunos.64" />
 	</target>
 
-	<target name="gcc-sunos.32" unless="skip32">
-		<antcall target="gcc-sunos.arch">
-			<param name="gccArch" value="x86" />
-			<param name="gccM" value="-m32" />
-		</antcall>
-	</target>
 	<target name="gcc-sunos.64" unless="skip64">
 		<antcall target="gcc-sunos.arch">
 			<param name="gccArch" value="amd64" />
@@ -279,15 +259,9 @@
 
 		<echo message="jdk.home is ${jdk.home}" />
 
-		<antcall target="gcc-freebsd.32" />
 		<antcall target="gcc-freebsd.64" />
 	</target>
 	
-	<target name="gcc-freebsd.32" unless="skip32">
-		<antcall target="gcc-freebsd.arch">
-			<param name="gccArch" value="i386" />
-		</antcall>
-	</target>
 	<target name="gcc-freebsd.64" unless="skip64">
 		<antcall target="gcc-freebsd.arch">
 			<param name="gccArch" value="amd64" />
