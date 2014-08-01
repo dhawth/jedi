@@ -136,225 +136,242 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					log.debug("received request line from socket: " + requestLine);
 				}
 
-				so.increment("PDNSCH.lines_read_from_socket");
-
-				//
-				// read request from socket
-				//
-				request = mapper.readValue(requestLine, PDNSRequest.class);
-
-				if (!validateRequest(request))
-				{
-					so.increment("PDNSCH.invalid_requests_received");
-
-					if (log.isDebugEnabled())
-					{
-						log.debug("invalid request received from powerdns, closing socket");
-					}
-					socket.close();
-					break;
-				}
-
-				so.increment("PDNSCH.valid_requests_received");
-
-				if (request.getMethod().equals("initialize"))
-				{
-					so.increment("PDNSCH.initialization_requests");
-
-					if (log.isDebugEnabled())
-					{
-						log.debug("got an initialize request from powerdns, replying OK");
-					}
-					writeOKToSocket(writer);
-					continue;
-				}
-
-				so.increment("PDNSCH.lookup_requests");
-
-				hostname = request.getDomain().toLowerCase();
-
-				//
-				// see if it is in local LRU cache
-				//
-				if (cache != null)
-				{
-					if (log.isDebugEnabled())
-					{
-						log.debug("looking up hostname " + hostname + " in LRU");
-					}
-
-					dnsRecordSet = cache.getIfPresent(hostname);
-
-					so.increment("PDNSCH.cache_lookups");
-
-					if (dnsRecordSet == null)
-					{
-						so.increment("PDNSCH.cache_misses");
-					}
-					else
-					{
-						so.increment("PDNSCH.cache_hits");
-
-						if (log.isDebugEnabled())
-						{
-							log.debug("found cached record for hostname");
-						}
-
-						//
-						// test to see if record is too old
-						//
-						if (dnsRecordSet.getTimestamp() < (Now.getNow() - cache_timeout))
-						{
-							if (log.isDebugEnabled())
-							{
-								log.debug(
-									"cache record for hostname " + hostname + " is too old, removing it");
-							}
-							so.increment("PDNSCH.cache_expirations");
-							cache.invalidate(hostname);
-						}
-						else
-						{
-							if (log.isDebugEnabled())
-							{
-								log.debug(
-									"cache record for hostname " + hostname + " is valid, sending it");
-							}
-							so.increment("PDNSCH.answers_served_from_cache");
-
-							if (request.getQType().equals("SOA"))
-							{
-								//
-								// typical SOA request:
-								//
-								// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
-								//
-								so.increment("PDNSCH.SOA_requests");
-								writeSOAResponse(writer, request, dnsRecordSet);
-							}
-							else
-							{
-								writeRecordToSocket(writer, request, dnsRecordSet);
-							}
-							continue;
-						}
-					}
-				}
-
-				//
-				// not in Cache, see if we can fetch it from the Master Controller
-				// I've tried to put as much code that might wait into the RestClient, that way
-				// we can have a super-timeout that covers all of it via the Future.get(...)
-				// method.
-				//
-				if (log.isDebugEnabled())
-				{
-					log.debug("submitting RestClient to the execution pool");
-				}
-
-				restClient.setHostname(hostname);
-				future = apiPool.submit(restClient);
-
-				so.increment("PDNSCH.API_requests_submitted");
+				so.increment("PDNSCH.requests_received.total");
+				long start = System.nanoTime();
 
 				try
 				{
-					if (log.isDebugEnabled())
+					//
+					// read request from socket
+					//
+					request = mapper.readValue(requestLine, PDNSRequest.class);
+
+					if (!validateRequest(request))
 					{
-						log.debug("waiting for return from RestClient");
+						so.increment("PDNSCH.requests_received.invalid");
+
+						if (log.isDebugEnabled())
+						{
+							log.debug(
+								"invalid request received from powerdns, closing socket");
+						}
+						socket.close();
+						break;
 					}
 
-					dnsRecordSet = future.get(config.rest_fetch_timeout, TimeUnit.MILLISECONDS);
+					so.increment("PDNSCH.requests_received.valid");
 
-					if (log.isDebugEnabled())
+					if (request.getMethod().equals("initialize"))
 					{
-						log.debug("got dnsRecord from RestClient: " + dnsRecordSet);
-					}
+						so.increment("PDNSCH.requests_received.initialize_requests");
 
-					if (dnsRecordSet == null)
-					{
-						so.increment("PDNSCH.null_futures");
-
-						//
-						// we have nothing to write to the socket, empty response.
-						// this could be from a timeout, lack of entry for the fqdn, or any
-						// other error in processing.
-						//
-						writeEmptyRecordToSocket(writer);
+						if (log.isDebugEnabled())
+						{
+							log.debug(
+								"got an initialize request from powerdns, replying OK");
+						}
+						writeOKToSocket(writer);
 						continue;
 					}
 
-					if (log.isDebugEnabled())
-					{
-						log.debug(
-							"adding cache entry for hostname " + hostname + " to the LRU");
-					}
+					so.increment("PDNSCH.requests_received.lookup_requests");
 
-					so.increment("PDNSCH.successful_futures");
+					hostname = request.getDomain().toLowerCase();
 
+					//
+					// see if it is in local LRU cache
+					//
 					if (cache != null)
 					{
-						cache.put(hostname, dnsRecordSet);
-						so.increment("PDNSCH.cache_inserts");
+						if (log.isDebugEnabled())
+						{
+							log.debug("looking up hostname " + hostname + " in LRU");
+						}
+
+						dnsRecordSet = cache.getIfPresent(hostname);
+
+						so.increment("PDNSCH.cache_lookups");
+
+						if (dnsRecordSet == null)
+						{
+							so.increment("PDNSCH.cache_misses");
+						}
+						else
+						{
+							so.increment("PDNSCH.cache_hits");
+
+							if (log.isDebugEnabled())
+							{
+								log.debug("found cached record for hostname");
+							}
+
+							//
+							// test to see if record is too old
+							//
+							if (dnsRecordSet.getTimestamp() < (Now
+								.getNow() - cache_timeout))
+							{
+								if (log.isDebugEnabled())
+								{
+									log.debug(
+										"cache record for hostname " + hostname + " is too old, removing it");
+								}
+								so.increment("PDNSCH.cache_expirations");
+								cache.invalidate(hostname);
+							}
+							else
+							{
+								if (log.isDebugEnabled())
+								{
+									log.debug(
+										"cache record for hostname " + hostname + " is valid, sending it");
+								}
+								so.increment("PDNSCH.answers_served_from_cache");
+
+								if (request.getQType().equals("SOA"))
+								{
+									//
+									// typical SOA request:
+									//
+									// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
+									//
+									so.increment("PDNSCH.SOA_requests");
+									writeSOAResponse(writer, request, dnsRecordSet);
+								}
+								else
+								{
+									writeRecordToSocket(writer, request,
+											    dnsRecordSet);
+								}
+								continue;
+							}
+						}
 					}
 
-					if (request.getQType().equals("SOA"))
-					{
-						//
-						// typical SOA request:
-						//
-						// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
-						//
-						so.increment("PDNSCH.SOA_requests");
-						writeSOAResponse(writer, request, dnsRecordSet);
-					}
-					else
-					{
-						writeRecordToSocket(writer, request, dnsRecordSet);
-					}
-				}
-				catch (TimeoutException te)
-				{
+					//
+					// not in Cache, see if we can fetch it from the Master Controller
+					// I've tried to put as much code that might wait into the RestClient, that way
+					// we can have a super-timeout that covers all of it via the Future.get(...)
+					// method.
+					//
 					if (log.isDebugEnabled())
 					{
-						log.debug(
-							"Future timed out, cancelling it and returning empty response");
+						log.debug("submitting RestClient to the execution pool");
 					}
-					so.increment("PDNSCH.futures_exceptions.TimeoutException");
-					future.cancel(true);
-					writeEmptyRecordToSocket(writer);
-				}
-				catch (CancellationException ce)
-				{
-					if (log.isDebugEnabled())
+
+					restClient.setHostname(hostname);
+					future = apiPool.submit(restClient);
+
+					so.increment("PDNSCH.API_requests_submitted");
+
+					try
 					{
-						log.debug("Future threw a CancellationException");
+						long futureStart = System.nanoTime();
+
+						if (log.isDebugEnabled())
+						{
+							log.debug("waiting for return from RestClient");
+						}
+
+						dnsRecordSet =
+							future.get(config.rest_fetch_timeout, TimeUnit.MILLISECONDS);
+
+						so.timing("PDNSCH.future_wait", (System.nanoTime() - futureStart) / 1000);
+
+						if (log.isDebugEnabled())
+						{
+							log.debug("got dnsRecord from RestClient: " + dnsRecordSet);
+						}
+
+						if (dnsRecordSet == null)
+						{
+							so.increment("PDNSCH.null_futures");
+
+							//
+							// we have nothing to write to the socket, empty response.
+							// this could be from a timeout, lack of entry for the fqdn, or any
+							// other error in processing.
+							//
+							writeEmptyRecordToSocket(writer);
+							continue;
+						}
+
+						if (log.isDebugEnabled())
+						{
+							log.debug(
+								"adding cache entry for hostname " + hostname + " to the LRU");
+						}
+
+						so.increment("PDNSCH.successful_futures");
+
+						if (cache != null)
+						{
+							cache.put(hostname, dnsRecordSet);
+							so.increment("PDNSCH.cache_inserts");
+						}
+
+						if (request.getQType().equals("SOA"))
+						{
+							//
+							// typical SOA request:
+							//
+							// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
+							//
+							so.increment("PDNSCH.SOA_requests");
+							writeSOAResponse(writer, request, dnsRecordSet);
+						}
+						else
+						{
+							writeRecordToSocket(writer, request, dnsRecordSet);
+						}
 					}
-					so.increment("PDNSCH.futures_exceptions.CancellationException");
-					writeEmptyRecordToSocket(writer);
-				}
-				catch (ExecutionException ee)
-				{
-					if (log.isDebugEnabled())
+					catch (TimeoutException te)
 					{
-						log.debug("Future threw an ExecutionException: " + ee);
+						if (log.isDebugEnabled())
+						{
+							log.debug(
+								"Future timed out, cancelling it and returning empty response");
+						}
+						so.increment("PDNSCH.futures_exceptions.TimeoutException");
+						future.cancel(true);
+						writeEmptyRecordToSocket(writer);
 					}
-					so.increment("PDNSCH.futures_exceptions.ExecutionException");
-					writeEmptyRecordToSocket(writer);
-				}
-				catch (InterruptedException ie)
-				{
-					if (log.isDebugEnabled())
+					catch (CancellationException ce)
 					{
-						log.debug("Future threw an InterruptedException");
+						if (log.isDebugEnabled())
+						{
+							log.debug("Future threw a CancellationException");
+						}
+						so.increment("PDNSCH.futures_exceptions.CancellationException");
+						writeEmptyRecordToSocket(writer);
 					}
-					so.increment("PDNSCH.futures_exceptions.InterruptedException");
-					future.cancel(true);
-					writeEmptyRecordToSocket(writer);
+					catch (ExecutionException ee)
+					{
+						if (log.isDebugEnabled())
+						{
+							log.debug("Future threw an ExecutionException: " + ee);
+						}
+						so.increment("PDNSCH.futures_exceptions.ExecutionException");
+						writeEmptyRecordToSocket(writer);
+					}
+					catch (InterruptedException ie)
+					{
+						if (log.isDebugEnabled())
+						{
+							log.debug("Future threw an InterruptedException");
+						}
+						so.increment("PDNSCH.futures_exceptions.InterruptedException");
+						future.cancel(true);
+						writeEmptyRecordToSocket(writer);
+					}
+					finally
+					{
+						future = null;
+					}
 				}
 				finally
 				{
-					future = null;
+					so.timing("PDNSCH.request_processing", (System.nanoTime() - start) / 1000);
 				}
 			}
 

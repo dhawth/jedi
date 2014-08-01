@@ -425,13 +425,13 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_inserts") == 2);
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_lookups") == 20);
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_misses") == 1);
-		assertTrue(soMapString, soMap.get("PDNSCH.lines_read_from_socket") == 30);
-		assertTrue(soMapString, soMap.get("PDNSCH.initialization_requests") == 10);
-		assertTrue(soMapString, soMap.get("PDNSCH.lookup_requests") == 20);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.total") == 30);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.initialize_requests") == 10);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup_requests") == 20);
 		assertTrue(soMapString, soMap.get("PDNSCH.empty_replies_sent") == 10);
 		assertTrue(soMapString, soMap.get("PDNSCH.positive_replies_sent") == 20);
 		assertTrue(soMapString, soMap.get("PDNSCH.successful_futures") == 2);
-		assertTrue(soMapString, soMap.get("PDNSCH.valid_requests_received") == 30);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.valid") == 30);
 
 		/**
 		 * test: make sure a timeout fetching reply from API server results in a null reply
@@ -524,9 +524,9 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		assertTrue(soMapString, soMap.get("PDNSCH.API_requests_submitted") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_lookups") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.futures_exceptions.TimeoutException") == 1);
-		assertTrue(soMapString, soMap.get("PDNSCH.lines_read_from_socket") == 1);
-		assertTrue(soMapString, soMap.get("PDNSCH.lookup_requests") == 1);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.total") == 1);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup_requests") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.negative_replies_sent") == 1);
-		assertTrue(soMapString, soMap.get("PDNSCH.valid_requests_received") == 1);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.valid") == 1);
 	}
 }
