@@ -295,6 +295,84 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		}
 
 		/**
+		 * test: if request method is getDomainMetadata, that it writes result: false to socket
+		 * PowerDNS does not require that the backend implement getDomainMetadata, and result: false is
+		 * how the backend is expected to tell PDNS that it does not.  This is not documented in PDNS,
+		 * but if you close the socket on PDNS because you received a request with this method, it will
+		 * cause churn on your sockets and threads and backends, and that's bad.
+		 */
+
+		try
+		{
+			socket = new Socket();
+			t = new Thread()
+			{
+				public void run()
+				{
+					ServerSocket server = null;
+
+					try
+					{
+						log.debug("starting server on port 5353");
+						server = new ServerSocket();
+						server.bind(new InetSocketAddress("localhost", 5353));
+						log.debug("listening for a connection");
+						Socket accepted = server.accept();
+						log.debug("got a connection, starting handler");
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						p.start();
+						log.debug("waiting to join handler");
+						p.join();
+						log.debug("handler joined");
+					}
+					catch (Exception e)
+					{
+						e.printStackTrace();
+						fail(e.getMessage());
+					}
+					finally
+					{
+						try
+						{
+							if (server != null)
+							{
+								log.debug("closing server on port 5353");
+								server.close();
+							}
+						}
+						catch (IOException e)
+						{
+						}
+					}
+				}
+			};
+			t.start();
+			Thread.sleep(200);
+			log.debug("connecting as a client");
+			socket.connect(new InetSocketAddress("localhost", 5353));
+			log.debug("connected, sending getDomainMetadata request");
+			socket.getOutputStream().write("{\"method\":\"getDomainMetadata\"}\n".getBytes());
+			BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			String line = reader.readLine().trim();
+			log.debug("read line from server: " + line);
+			assertEquals(line, "{\"result\":false}");
+			socket.close();
+			log.debug("wrote foo, giving it a second to join");
+			t.join(1000);
+			assertTrue(!t.isAlive());
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+		finally
+		{
+			t = null;
+			socket = null;
+		}
+
+		/**
 		 * Have a group of tests all at once:
 		 *
 		 * In order to do this, many of the tests are passive.  We check the contents of the global/singleton

@@ -174,6 +174,13 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						continue;
 					}
 
+					if (request.getMethod().equals("getDomainMetadata"))
+					{
+						so.increment("PDNSCH.requests_received.getDomainMetadata");
+						writeEmptyRecordToSocket(writer);
+						continue;
+					}
+
 					so.increment("PDNSCH.requests_received.lookup_requests");
 
 					hostname = request.getDomain().toLowerCase();
@@ -673,6 +680,11 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		}
 
 		if ("initialize".equals(r.getMethod()))
+		{
+			return true;
+		}
+
+		if ("getDomainMetadata".equals(r.getMethod()))
 		{
 			return true;
 		}
