@@ -2,7 +2,6 @@ package org.devnull.jedi;
 
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.google.common.cache.Cache;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.log4j.Logger;
 import org.devnull.jedi.configs.JediConfig;
 import org.devnull.jedi.records.MXRecord;
@@ -62,8 +61,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	public PowerDNSConnectionHandler(Socket client,
 					 final JediConfig config,
 					 final ExecutorService apiPool,
-					 final Cache<String, DNSRecordSet> cache,
-					 final PoolingHttpClientConnectionManager httpClientConnectionManager)
+					 final Cache<String, DNSRecordSet> cache)
 		throws Exception
 	{
 		if (log.isDebugEnabled())
@@ -75,7 +73,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		this.config = config;
 		this.apiPool = apiPool;
 		this.cache = cache;
-		restClient = new RestClient(config, httpClientConnectionManager);
+		restClient = new RestClient(config);
 	}
 
 	/**
@@ -192,9 +190,31 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 						continue;
 					}
 
-					so.increment("PDNSCH.requests_received.lookup_requests");
+					log.debug("Received request: " + request);
+					so.increment("PDNSCH.records_requested." + request.getQType());
 
 					hostname = request.getDomain().toLowerCase();
+
+					//
+					// see if it is a SOA or NS request
+					//
+					if ("SOA".equals(request.getQType()))
+					{
+						//
+						// typical SOA request:
+						//
+						// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
+						//
+						log.debug("writing SOA response for request: " + request);
+						writeSOAResponse(writer, request);
+						continue;
+					}
+
+					if ("NS".equals(request.getQType()))
+					{
+						writeEmptyRecordToSocket(writer);
+						continue;
+					}
 
 					//
 					// see if it is in local LRU cache
@@ -244,23 +264,11 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 									log.debug(
 										"cache record for hostname " + hostname + " is valid, sending it");
 								}
+
 								so.increment("PDNSCH.answers_served_from_cache");
 
-								if (request.getQType().equals("SOA"))
-								{
-									//
-									// typical SOA request:
-									//
-									// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
-									//
-									so.increment("PDNSCH.SOA_requests");
-									writeSOAResponse(writer, request, dnsRecordSet);
-								}
-								else
-								{
-									writeRecordToSocket(writer, request,
-											    dnsRecordSet);
-								}
+								writeRecordToSocket(writer, request, dnsRecordSet);
+
 								continue;
 							}
 						}
@@ -328,20 +336,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 							so.increment("PDNSCH.cache_inserts");
 						}
 
-						if (request.getQType().equals("SOA"))
-						{
-							//
-							// typical SOA request:
-							//
-							// {"method":"lookup","parameters":{"qtype":"SOA","qname":"foo.bar.baz","remote":"127.0.0.1","local":"0.0.0.0","real-remote":"127.0.0.1/32","zone-id":"-1"}}
-							//
-							so.increment("PDNSCH.SOA_requests");
-							writeSOAResponse(writer, request, dnsRecordSet);
-						}
-						else
-						{
-							writeRecordToSocket(writer, request, dnsRecordSet);
-						}
+						writeRecordToSocket(writer, request, dnsRecordSet);
 					}
 					catch (TimeoutException te)
 					{
@@ -472,20 +467,34 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	//
 
 	/**
-	 * Writes an SOA response object to the given writer for the given SOA PDNSRequest.
+	 * Writes a hardcoded SOA response for all domains for which a SOA record is requested.
 	 *
 	 * @param writer    The BufferedWriter created on the client socket's output stream
 	 * @param request   The original PDNSRequest read in from the client socket.
-	 * @param recordSet The DNSRecordSet that has the SOA record in it for the requested FQDN.
 	 * @throws Exception When there are issues writing to the socket.
 	 */
-	private void writeSOAResponse(final BufferedWriter writer, final PDNSRequest request,
-				      final DNSRecordSet recordSet) throws Exception
+	private void writeSOAResponse(final BufferedWriter writer, final PDNSRequest request) throws Exception
 	{
 		if (log.isDebugEnabled())
 		{
 			log.debug("giving powerdns a positive SOA response");
 		}
+
+		/*
+		 * SOA Request:
+		 *
+		 * {
+		 	"parameters" : {
+		 		"zone-id" : "-1",
+		 		"qname" : "foo.bar.baz",
+		 		"type" : "SOA",
+		 		"real-remote" : "127.0.0.1/32",
+		 		"local" : "0.0.0.0",
+		 		"remote" : "127.0.0.1"
+		 	},
+		 	"method" : "lookup"
+		 * }
+		 */
 
 		/*
 		 * SOA Response:
@@ -506,15 +515,13 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		 153	}
 		 */
 
-		SOARecord soa = recordSet.getSOA();
-
 		sb.setLength(0);
 		sb.append("{\"result\":[");
 
 		sb.append("{");
 		sb.append("\"qtype\":\"SOA\",");
 		sb.append("\"qname\":\"").append(request.getDomain()).append("\",");
-		sb.append("\"content\":\"").append(soa.getAddress()).append("\",");
+		sb.append("\"content\":\"").append("ns1.prod.pertino.com. eng-devops.pertino.com. 1 7200 900 1209600 86400").append("\",");
 		sb.append("\"ttl\":3600,");
 		sb.append("\"priority\":0,");
 		sb.append("\"domain_id\":-1");
@@ -696,16 +703,6 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		}
 
 		if ("initialize".equals(r.getMethod()))
-		{
-			return true;
-		}
-
-		if ("getDomainMetadata".equals(r.getMethod()))
-		{
-			return true;
-		}
-
-		if ("calculateSOASerial".equals(r.getMethod()))
 		{
 			return true;
 		}

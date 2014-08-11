@@ -174,16 +174,6 @@ public final class Jedi extends JsonBase implements Runnable
 			}
 
 			//
-			// set up the HttpClientConnectionPool that will be shared by all RestClients for talking to
-			// Darkside.
-			//
-			PoolingHttpClientConnectionManager poolingHttpClientConnectionManager =
-				new PoolingHttpClientConnectionManager();
-
-			poolingHttpClientConnectionManager.setDefaultMaxPerRoute(poolSize * 2);
-			poolingHttpClientConnectionManager.setMaxTotal(poolSize * 2);
-
-			//
 			// Set up ServerSocket and answering ExecutorService
 			//
 			ExecutorService executor = Executors.newFixedThreadPool(poolSize);
@@ -194,8 +184,7 @@ public final class Jedi extends JsonBase implements Runnable
 			{
 				if (config.unix_socket_path != null)
 				{
-					unixSocketThread = new Thread(new UnixSocketServer(config, executor, apiPool,
-											   poolingHttpClientConnectionManager),
+					unixSocketThread = new Thread(new UnixSocketServer(config, executor, apiPool),
 								      "UnixSocketServer");
 					unixSocketThread.start();
 				}
@@ -221,8 +210,7 @@ public final class Jedi extends JsonBase implements Runnable
 						so.increment("Jedi.connections_accepted");
 
 						executor.execute(
-							new PowerDNSConnectionHandler(client, config, apiPool, cache,
-										      poolingHttpClientConnectionManager));
+							new PowerDNSConnectionHandler(client, config, apiPool, cache));
 					}
 					catch (InterruptedException e)
 					{
@@ -359,14 +347,12 @@ public final class Jedi extends JsonBase implements Runnable
 		private PoolingHttpClientConnectionManager poolingHttpClientConnectionManager;
 
 		public UnixSocketServer(final JediConfig config, final ExecutorService executorService,
-					final ExecutorService apiPool,
-					final PoolingHttpClientConnectionManager poolingHttpClientConnectionManager)
+					final ExecutorService apiPool)
 			throws Exception
 		{
 			this.config = config;
 			this.socketExecutorService = executorService;
 			this.apiExecutorService = apiPool;
-			this.poolingHttpClientConnectionManager = poolingHttpClientConnectionManager;
 
 			server = AFUNIXServerSocket.newInstance();
 			server.bind(new AFUNIXSocketAddress(new File(config.unix_socket_path)));
@@ -393,8 +379,7 @@ public final class Jedi extends JsonBase implements Runnable
 
 						socketExecutorService.execute(
 							new PowerDNSConnectionHandler(client, config,
-										      apiExecutorService, cache,
-										      poolingHttpClientConnectionManager));
+										      apiExecutorService, cache));
 					}
 					catch (InterruptedException e)
 					{

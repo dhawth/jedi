@@ -24,7 +24,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.BasicClientConnectionManager;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
@@ -75,6 +75,11 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	private CloseableHttpClient httpClient = null;
 
 	/**
+	 * The config object for Jedi, used for instantiating HttpClients
+	 */
+	private JediConfig config = null;
+
+	/**
 	 * the hostname we are looking up, not the REST server hostname that we connect to in order to do the lookup.
 	 */
 	private String hostname = null;
@@ -85,8 +90,7 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	 * @param config The main JediConfig object that includes REST server related config items.
 	 * @throws Exception When there are issues setting up the HTTP client objects using the config.
 	 */
-	public RestClient(final JediConfig config,
-			  final PoolingHttpClientConnectionManager clientConnectionManager)
+	public RestClient(final JediConfig config)
 		throws Exception
 	{
 		try
@@ -102,29 +106,9 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 					"rest_server_hostname, rest_username, or rest_password is null");
 			}
 
-			CredentialsProvider credsProvider = new BasicCredentialsProvider();
+			this.config = config;
 
-			credsProvider.setCredentials(
-				new AuthScope(config.rest_server_hostname, config.rest_server_port),
-				new UsernamePasswordCredentials(config.rest_username, config.rest_password)
-			);
-
-			RequestConfig requestConfig = RequestConfig.custom()
-								   .setTargetPreferredAuthSchemes(
-									   Arrays.asList(AuthSchemes.DIGEST))
-								   .setSocketTimeout(new Long(config.rest_fetch_timeout).intValue())
-								   .setConnectTimeout(new Long(config.rest_fetch_timeout).intValue())
-								   .setConnectionRequestTimeout(new Long(config.rest_fetch_timeout).intValue())
-								   .build();
-
-			httpClient = HttpClients.custom()
-						.setConnectionManager(clientConnectionManager)
-						.setDefaultCredentialsProvider(credsProvider)
-						.disableAutomaticRetries()
-						.setMaxConnTotal(1)
-						.setDefaultRequestConfig(requestConfig)
-						.build();
-
+			httpClient = generateHttpClient();
 			httpHost = new HttpHost(config.rest_server_hostname, config.rest_server_port);
 
 			instanceName = "RestClient" + instanceCounter.incrementAndGet();
@@ -141,6 +125,42 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 		}
 
 		so.increment("RestClient.created");
+	}
+
+	private CloseableHttpClient generateHttpClient()
+	{
+		if (log.isDebugEnabled())
+		{
+			log.debug(instanceName + ": Generating HTTP Client");
+		}
+
+		CredentialsProvider credsProvider = new BasicCredentialsProvider();
+
+		credsProvider.setCredentials(
+			new AuthScope(config.rest_server_hostname, config.rest_server_port),
+			new UsernamePasswordCredentials(config.rest_username, config.rest_password)
+		);
+
+		RequestConfig requestConfig = RequestConfig.custom()
+							   .setTargetPreferredAuthSchemes(
+								   Arrays.asList(AuthSchemes.DIGEST))
+							   .setSocketTimeout(new Long(config.rest_fetch_timeout)
+										     .intValue())
+							   .setConnectTimeout(
+								   new Long(config.rest_fetch_timeout)
+									   .intValue())
+							   .setConnectionRequestTimeout(
+								   new Long(config.rest_fetch_timeout)
+									   .intValue())
+							   .build();
+
+		return HttpClients.custom()
+				  .setConnectionManager(new BasicHttpClientConnectionManager())
+				  .setDefaultCredentialsProvider(credsProvider)
+				  .disableAutomaticRetries()
+				  .setMaxConnTotal(1)
+				  .setDefaultRequestConfig(requestConfig)
+				  .build();
 	}
 
 	/**
@@ -208,7 +228,39 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 				log.debug(instanceName + " requesting URI: " + httpGet.getURI());
 			}
 
-			CloseableHttpResponse response = httpClient.execute(httpHost, httpGet);
+			CloseableHttpResponse response = null;
+			int retryCount = 3;
+
+			do
+			{
+				try
+				{
+					if (retryCount < 3)
+					{
+						log.info("Making attempt " + (3 - retryCount + 1) + " to fetch records");
+					}
+
+					response = httpClient.execute(httpHost, httpGet);
+				}
+				catch (IllegalStateException ise)
+				{
+					if (ise.getMessage().equals("Connection is still allocated"))
+					{
+						so.increment("RestClient.httpClientBugsCaught");
+						log.info(
+							"Caught 'Connection is still allocated' exception due to buggy Http client code, regenerating httpClient");
+						httpClient.close();
+						httpClient = generateHttpClient();
+					}
+				}
+			}
+			while (response == null && retryCount-- > 0);
+
+			if (response == null)
+			{
+				log.error("Could not fetch records from Darkside, response is still null after 3 retries");
+				return null;
+			}
 
 			int status = response.getStatusLine().getStatusCode();
 

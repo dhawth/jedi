@@ -25,7 +25,6 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 {
 	private static Logger log = Logger.getLogger(PowerDNSConnectionHandlerTest.class);
 	private static final StatsObject so = StatsObject.getInstance();
-	private PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = new PoolingHttpClientConnectionManager();
 
 	@BeforeMethod
 	public void setUp() throws Exception
@@ -68,7 +67,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		{
 			socket = new Socket();
 			socket.close();
-			t = new Thread(new PowerDNSConnectionHandler(socket, config, apiPool, cache, poolingHttpClientConnectionManager));
+			t = new Thread(new PowerDNSConnectionHandler(socket, config, apiPool, cache));
 			t.start();
 			t.join(100);
 			assertTrue(!t.isAlive());
@@ -105,7 +104,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -174,7 +173,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -243,7 +242,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -302,6 +301,8 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		 * how the backend is expected to tell PDNS that it does not.  This is not documented in PDNS,
 		 * but if you close the socket on PDNS because you received a request with this method, it will
 		 * cause churn on your sockets and threads and backends, and that's bad.
+		 *
+		 * test: if the request method is calculateSOASerial, do the same.
 		 */
 
 		try
@@ -321,7 +322,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -358,8 +359,15 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 			String line = reader.readLine().trim();
 			log.debug("read line from server: " + line);
 			assertEquals(line, "{\"result\":false}");
+
+			log.debug("sending calculateSOASerial request");
+			socket.getOutputStream().write("{\"method\":\"calculateSOASerial\",\"parameters\":{\"domain\":\"dc-cup1.alponet.pertino.net\",\"sd\":{\"qname\":\"dc-cup1.alponet.pertino.net\",\"nameserver\":\"23.23.183.156\",\"hostmaster\":\"hostmaster.dc-cup1.alponet.pertino.net\",\"ttl\":10,\"serial\":0,\"refresh\":10800,\"retry\":3600,\"expire\":604800,\"default_ttl\":3600,\"domain_id\":-1,\"scopeMask\":0}}}\n".getBytes());
+			reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			line = reader.readLine().trim();
+			log.debug("read line from server: " + line);
+			assertEquals(line, "{\"result\":false}");
 			socket.close();
-			log.debug("wrote foo, giving it a second to join");
+			log.debug("giving it a second to join");
 			t.join(1000);
 			assertTrue(!t.isAlive());
 		}
@@ -408,7 +416,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -540,7 +548,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -608,17 +616,95 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_lookups") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.futures_exceptions.TimeoutException") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.total") == 1);
-		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup_requests") == 1);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup") == 1);
+		assertTrue(soMapString, soMap.get("PDNSCH.records_requested.ANY") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.negative_replies_sent") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.valid") == 1);
 
 		so.clear();
 
 		//
-		// TODO - confirm that request for calculateSOASerial gets false return
-		// TODO - confirm that request for getDomainMetadata gets false return
 		// TODO - confirm that SOA requests always return ns[12].prod.pertino.com hardcoded
 		// TODO - confirm that NS requests always get a false return
 		//
+
+		try
+		{
+			socket = new Socket();
+			t = new Thread()
+			{
+				public void run()
+				{
+					ServerSocket server = null;
+
+					try
+					{
+						log.debug("starting server on port 5353");
+						server = new ServerSocket();
+						server.bind(new InetSocketAddress("localhost", 5353));
+						log.debug("listening for a connection");
+						Socket accepted = server.accept();
+						log.debug("got a connection, starting handler");
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						p.start();
+						log.debug("waiting to join handler");
+						p.join();
+						log.debug("handler joined");
+					}
+					catch (Exception e)
+					{
+						e.printStackTrace();
+						fail(e.getMessage());
+					}
+					finally
+					{
+						try
+						{
+							if (server != null)
+							{
+								log.debug("closing server on port 5353");
+								server.close();
+							}
+						}
+						catch (IOException e)
+						{
+						}
+					}
+				}
+			};
+			t.start();
+			Thread.sleep(200);
+			log.debug("connecting as a client");
+			socket.connect(new InetSocketAddress("localhost", 5353));
+			log.debug("connected, sending SOA lookup request");
+			socket.getOutputStream().write("{\"parameters\":{\"zone-id\":\"-1\",\"qname\":\"foo.bar.baz\",\"qtype\":\"SOA\",\"real-remote\":\"127.0.0.1/32\",\"local\":\"0.0.0.0\",\"remote\":\"127.0.0.1\"},\"method\":\"lookup\"}\n".getBytes());
+			BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			String line = reader.readLine().trim();
+			log.debug("read line from server: " + line);
+			assertEquals(line, "{\"result\":[{\"qtype\":\"SOA\",\"qname\":\"foo.bar.baz\",\"content\":\"ns1.prod.pertino.com. eng-devops.pertino.com. 1 7200 900 1209600 86400\",\"ttl\":3600,\"priority\":0,\"domain_id\":-1}]}");
+
+			log.debug("sending NS request");
+			socket.getOutputStream().write("{\"parameters\":{\"zone-id\":\"-1\",\"qname\":\"foo.bar.baz\",\"qtype\":\"NS\",\"real-remote\":\"127.0.0.1/32\",\"local\":\"0.0.0.0\",\"remote\":\"127.0.0.1\"},\"method\":\"lookup\"}\n".getBytes());
+			reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+			line = reader.readLine().trim();
+			log.debug("read line from server: " + line);
+			assertEquals(line, "{\"result\":false}");
+			socket.close();
+			log.debug("giving it a second to join");
+			t.join(1000);
+			assertTrue(!t.isAlive());
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			fail(e.getMessage());
+		}
+		finally
+		{
+			t = null;
+			socket = null;
+		}
+
+		log.debug("so map is: " + so.toString());
 	}
 }

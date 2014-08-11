@@ -18,14 +18,10 @@ import static org.testng.AssertJUnit.*;
 public class RestClientTest
 {
 	protected static Logger log = null;
-	private PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = new PoolingHttpClientConnectionManager();
 
 	@BeforeClass
 	public void setUp() throws Exception
 	{
-		poolingHttpClientConnectionManager.setDefaultMaxPerRoute(2);
-		poolingHttpClientConnectionManager.setMaxTotal(2);
-
 		Properties logProperties = new Properties();
 
 		logProperties.put("log4j.rootLogger", "DEBUG, stdout");
@@ -52,7 +48,7 @@ public class RestClientTest
 
 		try
 		{
-			client = new RestClient(null, null);
+			client = new RestClient(null);
 			assertTrue(false);
 		}
 		catch (Exception e)
@@ -62,7 +58,7 @@ public class RestClientTest
 
 		try
 		{
-			client = new RestClient(new JediConfig(), poolingHttpClientConnectionManager);
+			client = new RestClient(new JediConfig());
 			assertNotNull(client);
 		}
 		catch (Exception e)
@@ -77,7 +73,7 @@ public class RestClientTest
 	{
 		try
 		{
-			RestClient client = new RestClient(new JediConfig(), poolingHttpClientConnectionManager);
+			RestClient client = new RestClient(new JediConfig());
 			client.setHostname("foobarbaz");
 			assertTrue(client.getHostname(), "foobarbaz".equals(client.getHostname()));
 		}
@@ -100,7 +96,7 @@ public class RestClientTest
 		try
 		{
 			log.info("testing failure when no hostname is set");
-			client = new RestClient(new JediConfig(), poolingHttpClientConnectionManager);
+			client = new RestClient(new JediConfig());
 			DNSRecordSet r = client.call();
 			assertTrue(false);
 		}
