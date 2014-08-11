@@ -1,6 +1,8 @@
 package org.devnull.jedi;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.google.common.cache.Cache;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.log4j.Logger;
 import org.devnull.jedi.configs.JediConfig;
 import org.devnull.jedi.records.MXRecord;
@@ -60,7 +62,8 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 	public PowerDNSConnectionHandler(Socket client,
 					 final JediConfig config,
 					 final ExecutorService apiPool,
-					 final Cache<String, DNSRecordSet> cache)
+					 final Cache<String, DNSRecordSet> cache,
+					 final PoolingHttpClientConnectionManager httpClientConnectionManager)
 		throws Exception
 	{
 		if (log.isDebugEnabled())
@@ -72,7 +75,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		this.config = config;
 		this.apiPool = apiPool;
 		this.cache = cache;
-		restClient = new RestClient(config);
+		restClient = new RestClient(config, httpClientConnectionManager);
 	}
 
 	/**
@@ -90,6 +93,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		String hostname;
 		PDNSRequest request;
 		long cache_timeout = config.cache_timeout * 1000;
+		String requestLine = "";
 
 		if (socket.isClosed())
 		{
@@ -123,7 +127,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					log.debug("waiting to read request from socket");
 				}
 
-				String requestLine = reader.readLine();
+				requestLine = reader.readLine();
 
 				if (requestLine == null)
 				{
@@ -142,7 +146,22 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 				try
 				{
 					//
-					// read request from socket
+					// if the request is for calculateSOASerial, its parameters section will not be
+					// a map of string:string but string:object, and thus it will fail when we try
+					// to map it ot a PDNSRequest object.  Catch that case early and return an empty
+					// (false) answer, and move on.
+					// The same behavior should apply to getDomainMetadata requests as well.
+					//
+					if (requestLine.contains("\"method\":\"calculateSOASerial\"") ||
+					    requestLine.contains("\"method\":\"getDomainMetadata\""))
+					{
+						so.increment("PDNSCH.requests_received.unsupported_method");
+						writeEmptyRecordToSocket(writer);
+						continue;
+					}
+
+					//
+					// read line into a PDNSRequest object
 					//
 					request = mapper.readValue(requestLine, PDNSRequest.class);
 
@@ -160,24 +179,16 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					}
 
 					so.increment("PDNSCH.requests_received.valid");
+					so.increment("PDNSCH.requests_received." + request.getMethod());
 
 					if (request.getMethod().equals("initialize"))
 					{
-						so.increment("PDNSCH.requests_received.initialize_requests");
-
 						if (log.isDebugEnabled())
 						{
 							log.debug(
 								"got an initialize request from powerdns, replying OK");
 						}
 						writeOKToSocket(writer);
-						continue;
-					}
-
-					if (request.getMethod().equals("getDomainMetadata"))
-					{
-						so.increment("PDNSCH.requests_received.getDomainMetadata");
-						writeEmptyRecordToSocket(writer);
 						continue;
 					}
 
@@ -384,18 +395,23 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 			if (log.isDebugEnabled())
 			{
-				log.debug("socket is closed, returning");
+				log.debug("closing socket and returning, either because socket was closed or we got an odd exception");
 			}
 
 			//
 			// end of while (!socket.isClosed())
 			//
 		}
+		catch (JsonMappingException e)
+		{
+			so.increment("PDNSCH.exceptions.JsonMappingException");
+			log.warn("caught json mapping exception: " + e, e);
+			log.warn("json mapping exception was for input: " + requestLine);
+		}
 		catch (Exception e)
 		{
 			so.increment("PDNSCH.exceptions");
-			log.warn("threw exception in run(): " + e);
-			e.printStackTrace();
+			log.warn("threw exception in run(): " + e, e);
 		}
 		finally
 		{
@@ -685,6 +701,11 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		}
 
 		if ("getDomainMetadata".equals(r.getMethod()))
+		{
+			return true;
+		}
+
+		if ("calculateSOASerial".equals(r.getMethod()))
 		{
 			return true;
 		}

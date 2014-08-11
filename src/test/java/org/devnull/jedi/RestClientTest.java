@@ -1,11 +1,13 @@
 package org.devnull.jedi;
 
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.devnull.jedi.configs.JediConfig;
 import org.devnull.jedi.mock.*;
 import org.devnull.jedi.records.*;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -16,20 +18,26 @@ import static org.testng.AssertJUnit.*;
 public class RestClientTest
 {
 	protected static Logger log = null;
+	private PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = new PoolingHttpClientConnectionManager();
 
-	@BeforeMethod
+	@BeforeClass
 	public void setUp() throws Exception
 	{
+		poolingHttpClientConnectionManager.setDefaultMaxPerRoute(2);
+		poolingHttpClientConnectionManager.setMaxTotal(2);
+
 		Properties logProperties = new Properties();
 
 		logProperties.put("log4j.rootLogger", "DEBUG, stdout");
 		logProperties.put("log4j.appender.stdout", "org.apache.log4j.ConsoleAppender");
 		logProperties.put("log4j.appender.stdout.layout", "org.apache.log4j.EnhancedPatternLayout");
 		logProperties.put("log4j.appender.stdout.layout.ConversionPattern", "%d [%F:%L] [%p] %C: %m%n");
-		logProperties.put("log4j.appender.stdout.layout.ConversionPattern", "%d [%p] %C: %m%n");
+		logProperties.put("log4j.appender.stdout.layout.ConversionPattern", "[%p] %C{1}: %m%n");
 		logProperties.put("log4j.appender.stdout.immediateFlush", "true");
 		logProperties.put("log4j.category.org.apache.http.wire", "INFO, stdout");
 		logProperties.put("log4j.additivity.org.apache.http.wire", false);
+		logProperties.put("log4j.category.org.apache.http.impl.conn.LoggingManagedHttpClientConnection", "INFO, stdout");
+		logProperties.put("log4j.additivity.org.apache.http.impl.conn.LoggingManagedHttpClientConnection", false);
 
 		BasicConfigurator.resetConfiguration();
 		PropertyConfigurator.configure(logProperties);
@@ -44,7 +52,7 @@ public class RestClientTest
 
 		try
 		{
-			client = new RestClient(null);
+			client = new RestClient(null, null);
 			assertTrue(false);
 		}
 		catch (Exception e)
@@ -54,7 +62,7 @@ public class RestClientTest
 
 		try
 		{
-			client = new RestClient(new JediConfig());
+			client = new RestClient(new JediConfig(), poolingHttpClientConnectionManager);
 			assertNotNull(client);
 		}
 		catch (Exception e)
@@ -69,7 +77,7 @@ public class RestClientTest
 	{
 		try
 		{
-			RestClient client = new RestClient(new JediConfig());
+			RestClient client = new RestClient(new JediConfig(), poolingHttpClientConnectionManager);
 			client.setHostname("foobarbaz");
 			assertTrue(client.getHostname(), "foobarbaz".equals(client.getHostname()));
 		}
@@ -91,8 +99,8 @@ public class RestClientTest
 
 		try
 		{
-			log.debug("testing failure when no hostname is set");
-			client = new RestClient(new JediConfig());
+			log.info("testing failure when no hostname is set");
+			client = new RestClient(new JediConfig(), poolingHttpClientConnectionManager);
 			DNSRecordSet r = client.call();
 			assertTrue(false);
 		}
@@ -125,9 +133,7 @@ public class RestClientTest
 		/**
 		 * test 3: set up a mock server that does not support authentication
 		 */
-		JediConfig config = new JediConfig();
 		MockAPIServer mock = null;
-		client = new RestClient(config);
 		client.setHostname("foo.bar.baz");
 
 		try
@@ -267,9 +273,9 @@ public class RestClientTest
 			List<Record> ips = r.getRecords();
 			log.debug("Record Set: " + r.toString());
 			assertTrue(r.toString(), ips.size() == 4);
-            assertTrue(r.toString(), ips.get(0) instanceof SOARecord);
-            assertTrue(r.toString(), ips.get(0).getType().equals("SOA"));
-            assertTrue(r.toString(), ips.get(0).getAddress().equals("foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600"));
+			assertTrue(r.toString(), ips.get(0) instanceof SOARecord);
+			assertTrue(r.toString(), ips.get(0).getType().equals("SOA"));
+			assertTrue(r.toString(), ips.get(0).getAddress().equals("foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600"));
 			assertTrue(r.toString(), ips.get(1) instanceof ARecord);
 			assertTrue(r.toString(), ips.get(1).getType().equals("A"));
 			assertTrue(r.toString(), ips.get(1).getAddress().equals("1.1.1.1"));
@@ -283,9 +289,9 @@ public class RestClientTest
 
 			assertNotNull(r.getSOA());
 
-            SOARecord soa = r.getSOA();
+			SOARecord soa = r.getSOA();
 
-            assertEquals(soa.getAddress(), "foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600");
+			assertEquals(soa.getAddress(), "foo.bar.baz me.foo.bar.baz 2012080849 7200 3600 1209600 3600");
 		}
 		catch (Exception e)
 		{

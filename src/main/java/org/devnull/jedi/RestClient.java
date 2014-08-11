@@ -8,11 +8,23 @@ import org.apache.http.NoHttpResponseException;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.auth.params.AuthPNames;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.HttpRequestRetryHandler;
+import org.apache.http.client.config.AuthSchemes;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.fluent.Executor;
+import org.apache.http.client.fluent.Request;
+import org.apache.http.client.fluent.Response;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.params.AuthPolicy;
+import org.apache.http.config.SocketConfig;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.BasicClientConnectionManager;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
@@ -49,16 +61,18 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	 * A counter to keep track of how many of these things we've created, for id purposes.
 	 */
 	private static final AtomicLong instanceCounter = new AtomicLong(0);
+
 	/**
 	 * for statsd stats
 	 */
 	private static final StatsObject so = StatsObject.getInstance();
 	private String instanceName = null;
+
 	/**
 	 * variables related to the fetching of data from the REST servers
 	 */
 	private HttpHost httpHost = null;
-	private DefaultHttpClient httpClient = null;
+	private CloseableHttpClient httpClient = null;
 
 	/**
 	 * the hostname we are looking up, not the REST server hostname that we connect to in order to do the lookup.
@@ -71,7 +85,8 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	 * @param config The main JediConfig object that includes REST server related config items.
 	 * @throws Exception When there are issues setting up the HTTP client objects using the config.
 	 */
-	public RestClient(final JediConfig config)
+	public RestClient(final JediConfig config,
+			  final PoolingHttpClientConnectionManager clientConnectionManager)
 		throws Exception
 	{
 		try
@@ -87,32 +102,30 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 					"rest_server_hostname, rest_username, or rest_password is null");
 			}
 
-			httpClient = new DefaultHttpClient(new BasicClientConnectionManager());
-			httpClient.getParams()
-				  .setParameter(AuthPNames.PROXY_AUTH_PREF, Arrays.asList(AuthPolicy.DIGEST));
-			httpClient.getCredentialsProvider().setCredentials
-				(
-					new AuthScope(config.rest_server_hostname, config.rest_server_port),
-					new UsernamePasswordCredentials(config.rest_username, config.rest_password)
-				);
+			CredentialsProvider credsProvider = new BasicCredentialsProvider();
+
+			credsProvider.setCredentials(
+				new AuthScope(config.rest_server_hostname, config.rest_server_port),
+				new UsernamePasswordCredentials(config.rest_username, config.rest_password)
+			);
+
+			RequestConfig requestConfig = RequestConfig.custom()
+								   .setTargetPreferredAuthSchemes(
+									   Arrays.asList(AuthSchemes.DIGEST))
+								   .setSocketTimeout(new Long(config.rest_fetch_timeout).intValue())
+								   .setConnectTimeout(new Long(config.rest_fetch_timeout).intValue())
+								   .setConnectionRequestTimeout(new Long(config.rest_fetch_timeout).intValue())
+								   .build();
+
+			httpClient = HttpClients.custom()
+						.setConnectionManager(clientConnectionManager)
+						.setDefaultCredentialsProvider(credsProvider)
+						.disableAutomaticRetries()
+						.setMaxConnTotal(1)
+						.setDefaultRequestConfig(requestConfig)
+						.build();
 
 			httpHost = new HttpHost(config.rest_server_hostname, config.rest_server_port);
-
-			//
-			// set up a retry handler that overrides the default one, this one does not do any retries
-			//
-			HttpRequestRetryHandler myRetryHandler = new HttpRequestRetryHandler()
-			{
-				public boolean retryRequest(
-					IOException exception,
-					int executionCount,
-					HttpContext context)
-				{
-					return false;
-				}
-			};
-
-			httpClient.setHttpRequestRetryHandler(myRetryHandler);
 
 			instanceName = "RestClient" + instanceCounter.incrementAndGet();
 
@@ -163,31 +176,39 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 	{
 		so.increment("RestClient.calls");
 
-		if (log.isDebugEnabled())
-		{
-			log.debug(instanceName + " starting execution");
-		}
-
 		if (hostname == null)
 		{
+			so.increment("RestClient.hostname_not_set_exception");
 			throw new NullPointerException("hostname has not been set, is null");
 		}
 
+		long start = System.nanoTime();
+
 		HttpEntity entity = null;
 
-		String path = "/fqdn/" + API_VERSION + "/" + hostname;
+		/*
+		Using the Fluent HC wrapper for the apache http client:
+		does not support authentication, though.
+
+		Response response = Request.Get(httpHost.toURI() + path).socketTimeout(1000).execute();
+		int code = response.returnResponse().getStatusLine().getStatusCode();
+		String content = response.returnContent().asString();
+		*/
 
 		try
 		{
-			if (log.isDebugEnabled())
-			{
-				log.debug(instanceName + " requesting URI: " + path);
-			}
-
 			so.increment("RestClient.fetches_attempted");
 
-			HttpResponse response = httpClient.execute(httpHost, new HttpGet(path));
-			entity = response.getEntity();
+			String path = "/fqdn/" + API_VERSION + "/" + hostname;
+
+			HttpGet httpGet = new HttpGet(path);
+
+			if (log.isDebugEnabled())
+			{
+				log.debug(instanceName + " requesting URI: " + httpGet.getURI());
+			}
+
+			CloseableHttpResponse response = httpClient.execute(httpHost, httpGet);
 
 			int status = response.getStatusLine().getStatusCode();
 
@@ -205,14 +226,11 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 					log.debug(instanceName + " returning null because we didn't get a 200 OK");
 				}
 
-				if (entity != null)
-				{
-					entity.getContent().close();
-				}
-
 				so.increment("RestClient.returned_null.bad_status_code");
 				return null;
 			}
+
+			entity = response.getEntity();
 
 			if (entity == null)
 			{
@@ -240,7 +258,7 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 			if (len == -1)
 			{
 				//
-				// no content-length header
+				// no content-length header, do not check to see if the length is too long
 				//
 			}
 			else if (len < 0 || len > MAX_REST_RESPONSE_LENGTH_ALLOWED)
@@ -255,17 +273,10 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 				return null;
 			}
 
-			InputStream instream = entity.getContent();
-
 			try
 			{
-				DNSRecordSet r = mapper.readValue(instream, DNSRecordSet.class);
+				DNSRecordSet r = mapper.readValue(entity.getContent(), DNSRecordSet.class);
 				r.setTimestamp(Now.getNow());
-
-				if (log.isDebugEnabled())
-				{
-					log.debug(instanceName + " got a valid response, returning it!");
-				}
 
 				so.increment("RestClient.valid_responses");
 
@@ -273,58 +284,42 @@ public class RestClient extends JsonBase implements Callable<DNSRecordSet>
 			}
 			catch (JsonParseException jpe)
 			{
-				so.increment("RestClient.JsonParseExceptions");
-				so.increment("RestClient.total_exceptions");
-
-				if (log.isDebugEnabled())
-				{
-					log.debug(instanceName + " got a JsonParseException reading the reply: " + jpe);
-				}
+				log.info(instanceName + " got a JsonParseException reading the reply", jpe);
+				so.increment("RestClient.output_parsing_exceptions.JsonParseExceptions");
+				so.increment("RestClient.returned_null.JsonParseExceptions");
+				return null;
 			}
 			catch (Exception e)
 			{
-				so.increment("RestClient.total_exceptions");
-
-				if (log.isDebugEnabled())
-				{
-					log.debug(instanceName + " got exception reading reply content body: " + e);
-				}
-				e.printStackTrace();
-			}
-			finally
-			{
-				instream.close();
+				log.info(instanceName + " got exception reading reply content body", e);
+				so.increment("RestClient.output_parsing_exceptions.generic");
+				so.increment("RestClient.returned_null.generic_exception_reading_output");
+				return null;
 			}
 		}
 		catch (NoHttpResponseException e)
 		{
 			if (log.isDebugEnabled())
 			{
-				log.debug("Request timed out fetching record for " + hostname + " from REST Server");
+				log.debug(instanceName + " timed out fetching record for " + hostname);
 			}
 
-			so.increment("RestClient.null_returns.request_timeout");
+			so.increment("RestClient.exceptions.request_timeout");
+			so.increment("RestClient.returned_null.request_timeouts");
 			return null;
 		}
 		catch (Exception e)
 		{
-			so.increment("RestClient.total_exceptions");
 			log.info(
-				instanceName + " got exception fetching record for " + hostname + " from REST server: " + e);
+				instanceName + " got exception fetching record for " + hostname + " from REST server: ", e);
+			so.increment("RestClient.exceptions.generic");
+			so.increment("RestClient.returned_null.generic_request_exception");
+			return null;
 		}
 		finally
 		{
 			EntityUtils.consume(entity);
+			so.timing("RestClient.processing_time", (System.nanoTime() - start) / 1000);
 		}
-
-		if (log.isDebugEnabled())
-		{
-			log.debug(instanceName + " returning null at end of call()");
-		}
-
-		so.increment("RestClient.null_returns.bad_json");
-		return null;
 	}
-
-
 }

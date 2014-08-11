@@ -1,6 +1,7 @@
 package org.devnull.jedi;
 
 import com.google.common.cache.CacheBuilder;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
@@ -24,6 +25,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 {
 	private static Logger log = Logger.getLogger(PowerDNSConnectionHandlerTest.class);
 	private static final StatsObject so = StatsObject.getInstance();
+	private PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = new PoolingHttpClientConnectionManager();
 
 	@BeforeMethod
 	public void setUp() throws Exception
@@ -66,7 +68,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		{
 			socket = new Socket();
 			socket.close();
-			t = new Thread(new PowerDNSConnectionHandler(socket, config, apiPool, cache));
+			t = new Thread(new PowerDNSConnectionHandler(socket, config, apiPool, cache, poolingHttpClientConnectionManager));
 			t.start();
 			t.join(100);
 			assertTrue(!t.isAlive());
@@ -103,7 +105,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -172,7 +174,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -241,7 +243,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -319,7 +321,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -406,7 +408,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -491,6 +493,8 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		Map<String, Long> soMap = new TreeMap<String, Long>(so.getMapAndClear());
 		String soMapString = mapper.writeValueAsString(soMap);
 
+		log.info("So map is: " + soMapString);
+
 		assertTrue(soMapString, soMap.get("RestClient.calls") == 2);
 		assertTrue(soMapString, soMap.get("RestClient.created") == 1);
 		assertTrue(soMapString, soMap.get("RestClient.fetches_attempted") == 2);
@@ -504,8 +508,8 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_lookups") == 20);
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_misses") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.total") == 30);
-		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.initialize_requests") == 10);
-		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup_requests") == 20);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.initialize") == 10);
+		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup") == 20);
 		assertTrue(soMapString, soMap.get("PDNSCH.empty_replies_sent") == 10);
 		assertTrue(soMapString, soMap.get("PDNSCH.positive_replies_sent") == 20);
 		assertTrue(soMapString, soMap.get("PDNSCH.successful_futures") == 2);
@@ -536,7 +540,7 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 						log.debug("listening for a connection");
 						Socket accepted = server.accept();
 						log.debug("got a connection, starting handler");
-						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache));
+						Thread p = new Thread(new PowerDNSConnectionHandler(accepted, config, apiPool, cache, poolingHttpClientConnectionManager));
 						p.start();
 						log.debug("waiting to join handler");
 						p.join();
@@ -595,10 +599,11 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		soMap = new TreeMap<String, Long>(so.getMapAndClear());
 		soMapString = mapper.writeValueAsString(soMap);
 
+		log.info("so map is: " + soMapString);
+
 		assertTrue(soMapString, soMap.get("RestClient.calls") == 1);
 		assertTrue(soMapString, soMap.get("RestClient.created") == 1);
 		assertTrue(soMapString, soMap.get("RestClient.fetches_attempted") == 1);
-		assertTrue(soMapString, soMap.get("RestClient.null_returns.request_timeout") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.API_requests_submitted") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.cache_lookups") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.futures_exceptions.TimeoutException") == 1);
@@ -606,5 +611,14 @@ public class PowerDNSConnectionHandlerTest extends JsonBase
 		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.lookup_requests") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.negative_replies_sent") == 1);
 		assertTrue(soMapString, soMap.get("PDNSCH.requests_received.valid") == 1);
+
+		so.clear();
+
+		//
+		// TODO - confirm that request for calculateSOASerial gets false return
+		// TODO - confirm that request for getDomainMetadata gets false return
+		// TODO - confirm that SOA requests always return ns[12].prod.pertino.com hardcoded
+		// TODO - confirm that NS requests always get a false return
+		//
 	}
 }
