@@ -74,6 +74,7 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 		this.apiPool = apiPool;
 		this.cache = cache;
 		restClient = new RestClient(config);
+		socket.setSoTimeout(config.unix_socket_timeout);
 	}
 
 	/**
@@ -125,7 +126,14 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					log.debug("waiting to read request from socket");
 				}
 
-				requestLine = reader.readLine();
+				try {
+					requestLine = reader.readLine();
+				} catch (IOException e){
+					//expected, PowerDNS doesn't tell us when it's done using a connection, we need a timeout to clean up correctly.
+					log.debug("socket timed out, closing");
+					break;
+				}
+
 
 				if (requestLine == null)
 				{
