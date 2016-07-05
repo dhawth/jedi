@@ -367,6 +367,7 @@ public final class Jedi extends JsonBase implements Runnable
 					try
 					{
 						Socket client = server.accept();
+						client.setSoTimeout(config.unix_socket_timeout);
 
 						if (log.isDebugEnabled())
 						{

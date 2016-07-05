@@ -72,7 +72,7 @@ public class JediConfig extends JsonBase
 	public String unix_socket_path = null;
 
 	/**
-	 * Timeout value for the unix socket. Without this sockets get stuck in the CLOSE_WAIT status and file descriptors leak.
+	 * Timeout value (in milliseconds) for the unix socket. Without this sockets get stuck in the CLOSE_WAIT status and file descriptors leak.
 	 */
 	public Integer unix_socket_timeout = 5000;
 

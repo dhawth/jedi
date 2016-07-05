@@ -17,6 +17,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -128,9 +129,10 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 
 				try {
 					requestLine = reader.readLine();
-				} catch (IOException e){
+				} catch (SocketTimeoutException e){
 					//expected, PowerDNS doesn't tell us when it's done using a connection, we need a timeout to clean up correctly.
-					log.debug("socket timed out, closing");
+					log.debug("socket timed out");
+					so.increment("PDNSCH.unix_socket_timed_out");
 					break;
 				}
 
