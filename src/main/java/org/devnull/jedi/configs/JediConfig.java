@@ -72,6 +72,11 @@ public class JediConfig extends JsonBase
 	public String unix_socket_path = null;
 
 	/**
+	 * Timeout value (in milliseconds) for the unix socket. Without this sockets get stuck in the CLOSE_WAIT status and file descriptors leak.
+	 */
+	public Integer unix_socket_timeout = 5000;
+
+	/**
 	 * maximum number of DNSRecord objects to cache in memory in the LRU.  Tune this to protect memory usage.
 	 */
 	public Long max_items_in_cache = 10000L;

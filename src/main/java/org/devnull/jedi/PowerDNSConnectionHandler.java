@@ -125,7 +125,16 @@ public class PowerDNSConnectionHandler extends JsonBase implements Runnable
 					log.debug("waiting to read request from socket");
 				}
 
-				requestLine = reader.readLine();
+				try {
+					requestLine = reader.readLine();
+				} catch (IOException e){
+					//expected if this connection is using a unix socket, PowerDNS doesn't tell us when it's
+					//done using a connection so we need a timeout to clean up correctly.
+					log.debug("socket timed out");
+					so.increment("PDNSCH.unix_socket_timed_out");
+					break;
+				}
+
 
 				if (requestLine == null)
 				{
